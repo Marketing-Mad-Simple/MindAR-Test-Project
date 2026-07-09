@@ -1,29 +1,28 @@
 <html>
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <title>Model Placement AR</title>
     <style>
-      body { margin: 0; overflow: hidden; background: #000; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { overflow: hidden; background: #000; }
 
       #camera-feed {
         position: fixed;
-        top: 0; left: 0;
+        inset: 0;
         width: 100%; height: 100%;
         object-fit: cover;
         z-index: 0;
       }
 
-      a-scene {
+      canvas {
         position: fixed;
-        top: 0; left: 0;
-        width: 100%; height: 100%;
+        inset: 0;
         z-index: 1;
       }
 
       #loading-screen {
         position: fixed;
-        top: 0; left: 0;
-        width: 100%; height: 100%;
+        inset: 0;
         background: #000;
         display: flex;
         flex-direction: column;
@@ -51,7 +50,7 @@
         width: 0%;
         background: white;
         border-radius: 10px;
-        transition: width 0.3s ease;
+        transition: width 0.2s ease;
       }
       #progress-text {
         margin-top: 12px;
@@ -78,10 +77,8 @@
     </style>
   </head>
   <body>
-    <!-- Camera background -->
     <video id="camera-feed" autoplay playsinline muted></video>
 
-    <!-- Loading Screen -->
     <div id="loading-screen">
       <h2>Loading Experience</h2>
       <div id="progress-bar-container">
@@ -90,81 +87,107 @@
       <div id="progress-text">0%</div>
     </div>
 
-    <!-- Controls hint -->
     <div id="controls-hint">1 finger: rotate &nbsp;|&nbsp; 2 fingers pinch: scale &nbsp;|&nbsp; 2 fingers pan: move</div>
 
-    <a-scene
-          embedded
-          renderer="alpha: true; colorManagement: true; physicallyCorrectLights: true"
-          gltf-model="dracoDecoderPath: https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/libs/draco/gltf/"
-          vr-mode-ui="enabled: false"
-          device-orientation-permission-ui="enabled: false">
-      <a-assets id="assets" timeout="60000">
-        <a-asset-item id="exteriorModel" src="../models/Exterior.glb"></a-asset-item>
-      </a-assets>
-
-      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-
-      <a-entity id="exterior-entity" position="0 -1 -3" rotation="10 0 0" scale="0.05 0.05 0.05">
-        <a-gltf-model src="#exteriorModel"></a-gltf-model>
-      </a-entity>
-    </a-scene>
-
-    <script>
-      // ── Camera feed ─────────────────────────────────────────────────────────
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
-        .then(stream => { document.getElementById('camera-feed').srcObject = stream; })
-        .catch(() => { /* camera unavailable — model still shows on plain black */ });
-
-      // ── Loading screen ──────────────────────────────────────────────────────
-      const loadingScreen = document.getElementById('loading-screen');
-      const progressBar   = document.getElementById('progress-bar');
-      const progressText  = document.getElementById('progress-text');
-      const exteriorAsset = document.getElementById('exteriorModel');
-
-      let fakeProgress = 0;
-      let loaded = false;
-
-      const fakeInterval = setInterval(() => {
-        if (fakeProgress < 85) {
-          fakeProgress += 0.5;
-          progressBar.style.width = fakeProgress + '%';
-          progressText.textContent = Math.round(fakeProgress) + '%';
-        }
-      }, 100);
-
-      function onAssetLoaded() {
-        if (loaded) return;
-        loaded = true;
-        clearInterval(fakeInterval);
-        progressBar.style.width = '100%';
-        progressText.textContent = '100%';
-        setTimeout(() => {
-          loadingScreen.style.transition = 'opacity 0.5s ease';
-          loadingScreen.style.opacity = '0';
-          setTimeout(() => {
-            loadingScreen.style.display = 'none';
-            setTimeout(() => {
-              document.getElementById('controls-hint').style.opacity = '0';
-            }, 4000);
-          }, 500);
-        }, 400);
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"
       }
+    }
+    </script>
 
-      exteriorAsset.addEventListener('loaded', onAssetLoaded);
-      exteriorAsset.addEventListener('error', onAssetLoaded);
+    <script type="module">
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+      import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-      // ── Touch controls ──────────────────────────────────────────────────────
-      const exteriorEl = document.getElementById('exterior-entity');
+      // ── Camera feed ────────────────────────────────────────────────────────
+      navigator.mediaDevices
+        .getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+        .then(stream => { document.getElementById('camera-feed').srcObject = stream; })
+        .catch(() => { /* model still shows on plain black if camera is unavailable */ });
 
-      let pos   = { x: 0,  y: -1, z: -3 };
-      let rot   = { x: 10, y: 0,  z: 0  };
+      // ── Renderer ───────────────────────────────────────────────────────────
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.useLegacyLights = false;
+      document.body.appendChild(renderer.domElement);
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // ── Scene ──────────────────────────────────────────────────────────────
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 1000);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+      const sun = new THREE.DirectionalLight(0xffffff, 2);
+      sun.position.set(2, 4, 3);
+      scene.add(sun);
+
+      // ── Load model ─────────────────────────────────────────────────────────
+      const progressBar  = document.getElementById('progress-bar');
+      const progressText = document.getElementById('progress-text');
+      const loadingScreen = document.getElementById('loading-screen');
+      const hint = document.getElementById('controls-hint');
+
+      const dracoLoader = new DRACOLoader();
+      dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/libs/draco/gltf/');
+
+      const loader = new GLTFLoader();
+      loader.setDRACOLoader(dracoLoader);
+
+      const modelPos = new THREE.Vector3(0, -1, -3);
+      let model = null;
+      let rotY  = 0;
       let scale = 0.05;
 
+      loader.load(
+        '../models/Exterior.glb',
+        gltf => {
+          model = gltf.scene;
+          model.position.copy(modelPos);
+          model.rotation.x = THREE.MathUtils.degToRad(10);
+          model.scale.setScalar(scale);
+          scene.add(model);
+
+          progressBar.style.width = '100%';
+          progressText.textContent = '100%';
+          setTimeout(() => {
+            loadingScreen.style.transition = 'opacity 0.5s ease';
+            loadingScreen.style.opacity = '0';
+            setTimeout(() => {
+              loadingScreen.style.display = 'none';
+              setTimeout(() => { hint.style.opacity = '0'; }, 4000);
+            }, 500);
+          }, 400);
+        },
+        xhr => {
+          if (xhr.total > 0) {
+            const pct = Math.min(95, Math.round((xhr.loaded / xhr.total) * 95));
+            progressBar.style.width = pct + '%';
+            progressText.textContent = pct + '%';
+          }
+        }
+      );
+
+      // ── Render loop ────────────────────────────────────────────────────────
+      (function animate() {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+      })();
+
+      // ── Touch controls ─────────────────────────────────────────────────────
       function copyTouches(list) {
         return Array.from(list).map(t => ({ x: t.clientX, y: t.clientY }));
       }
-
       function dist(a, b) {
         return Math.hypot(a.x - b.x, a.y - b.y);
       }
@@ -177,21 +200,22 @@
 
       document.addEventListener('touchmove', e => {
         e.preventDefault();
+        if (!model) return;
         const curr = copyTouches(e.touches);
         if (!prevTouches) { prevTouches = curr; return; }
 
         if (curr.length === 1 && prevTouches.length === 1) {
           // Single finger → rotate Y
-          rot.y += (curr[0].x - prevTouches[0].x) * 0.5;
-          exteriorEl.setAttribute('rotation', `${rot.x} ${rot.y} ${rot.z}`);
+          rotY += (curr[0].x - prevTouches[0].x) * THREE.MathUtils.degToRad(0.5);
+          model.rotation.y = rotY;
 
         } else if (curr.length === 2 && prevTouches.length === 2) {
           // Pinch → scale
-          const prevDist = dist(prevTouches[0], prevTouches[1]);
-          const currDist = dist(curr[0], curr[1]);
-          if (prevDist > 0) {
-            scale = Math.max(0.005, Math.min(1.0, scale * (currDist / prevDist)));
-            exteriorEl.setAttribute('scale', `${scale} ${scale} ${scale}`);
+          const prevD = dist(prevTouches[0], prevTouches[1]);
+          const currD = dist(curr[0], curr[1]);
+          if (prevD > 0) {
+            scale = Math.max(0.005, Math.min(1.0, scale * (currD / prevD)));
+            model.scale.setScalar(scale);
           }
 
           // Two-finger pan → translate X / Y
@@ -199,10 +223,9 @@
           const prevCy = (prevTouches[0].y + prevTouches[1].y) / 2;
           const currCx = (curr[0].x + curr[1].x) / 2;
           const currCy = (curr[0].y + curr[1].y) / 2;
-
-          pos.x += (currCx - prevCx) * 0.008;
-          pos.y -= (currCy - prevCy) * 0.008;
-          exteriorEl.setAttribute('position', `${pos.x} ${pos.y} ${pos.z}`);
+          modelPos.x += (currCx - prevCx) * 0.008;
+          modelPos.y -= (currCy - prevCy) * 0.008;
+          model.position.copy(modelPos);
         }
 
         prevTouches = curr;
