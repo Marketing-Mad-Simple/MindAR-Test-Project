@@ -54,16 +54,16 @@
       <div id="progress-text">0%</div>
     </div>
 
-    <a-scene 
-          mindar-image="imageTargetSrc: ./targets.mind; filterMinCF: 0.001; filterBeta: 0.01;"
+    <a-scene
+          mindar-image="imageTargetSrc: ../targets.mind; filterMinCF: 0.001; filterBeta: 0.01;"
           gltf-model="dracoDecoderPath: https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/libs/draco/gltf/"
-          color-space="sRGB" 
+          color-space="sRGB"
           renderer="colorManagement: true, physicallyCorrectLights"
           vr-mode-ui="enabled: false"
           device-orientation-permission-ui="enabled: false">
       <a-assets id="assets" timeout="60000">
-        <a-asset-item id="interiorModel" src="./models/Interior_Optim.glb"></a-asset-item>
-        <a-asset-item id="exteriorModel" src="./models/Exterior.glb"></a-asset-item>
+        <a-asset-item id="interiorModel" src="../models/Interior_Optim.glb"></a-asset-item>
+        <a-asset-item id="exteriorModel" src="../models/Exterior.glb"></a-asset-item>
       </a-assets>
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
@@ -77,8 +77,8 @@
 
     <script>
       const loadingScreen = document.getElementById('loading-screen');
-      const progressBar = document.getElementById('progress-bar');
-      const progressText = document.getElementById('progress-text');
+      const progressBar   = document.getElementById('progress-bar');
+      const progressText  = document.getElementById('progress-text');
 
       const assets = [
         document.getElementById('interiorModel'),
@@ -89,7 +89,6 @@
       let fakeProgress = 0;
       let fakeInterval;
 
-      // Fake progress crawls to 90% while real assets load
       fakeInterval = setInterval(() => {
         const target = loaded === 0 ? 40 : loaded === 1 ? 85 : 90;
         if (fakeProgress < target) {
@@ -102,7 +101,6 @@
       function onAssetLoaded() {
         loaded++;
         if (loaded === assets.length) {
-          // All done — jump to 100% and hide
           clearInterval(fakeInterval);
           fakeProgress = 100;
           progressBar.style.width = '100%';
