@@ -476,6 +476,12 @@
         let lastLabelText = '';
         let lastLabelTime = 0;
 
+        // SLAM state — updated every frame from processCpuResult.reality
+        let slamStatus     = 'initializing';
+        let slamWorldPts   = 0;
+        let slamCamPos     = null;
+        let slamCamRot     = null;
+
         // Returns true if the surface normal points within ~60° of straight up.
         // If rotation is absent (no normal data), returns true rather than rejecting.
         function isHorizontal(rotation) {
@@ -617,15 +623,27 @@
             };
           },
 
-          onUpdate: () => {
+          onUpdate: ({processCpuResult} = {}) => {
+            // ── Capture SLAM tracking state ──────────────────────────────────
+            const reality = processCpuResult?.reality;
+            if (reality) {
+              slamStatus   = reality.trackingStatus ?? 'unknown';
+              slamWorldPts = reality.worldPoints?.length ?? 0;
+              slamCamPos   = reality.position;
+              slamCamRot   = reality.rotation;
+            }
+
+            const slamLine = `SLAM: ${slamStatus} | worldPts: ${slamWorldPts}`
+              + (slamCamPos ? ` | cam y: ${slamCamPos.y?.toFixed(3) ?? '?'}` : ' | cam: no pos');
+
             if (!arModel) {
-              dbg(['phase: ' + phase, 'arModel: not loaded yet']);
+              dbg([slamLine, 'phase: ' + phase, 'arModel: not loaded yet']);
               return;
             }
 
             if (phase !== 'adjusting') {
-              // Show locked-state info without running hitTest
               dbg([
+                slamLine,
                 'phase: LOCKED',
                 `model @ (${arModel.position.x.toFixed(3)}, ${arModel.position.y.toFixed(3)}, ${arModel.position.z.toFixed(3)})`,
                 'hitTest: paused (model is placed)',
@@ -633,9 +651,10 @@
               return;
             }
 
-            // [] = surfaces only (DETECTED_SURFACE, ESTIMATED_SURFACE).
-            // ['FEATURE_POINT'] would add raw 3D points which have no surface normal and cause air placement.
-            const hits = XR8.XrController.hitTest(0.5, 0.5, []);
+            // Include FEATURE_POINT in results — when SLAM hasn't built up enough map
+            // for a full surface plane, feature points are the only hits returned.
+            // We accept them as a last resort only when their normal is horizontal.
+            const hits = XR8.XrController.hitTest(0.5, 0.5, ['FEATURE_POINT']);
 
             // Build debug lines for every raw hit
             const lines = [`phase: adjusting  |  raw hits: ${hits.length}`];
@@ -654,20 +673,27 @@
               lines.push(`     y=${h.position.y.toFixed(3)}  normal.y=${normalY}  ${horizFlag}`);
             });
 
-            // Select best hit using the same priority as the placement logic
-            const hit = hits.find(h => h.type === 'DETECTED_SURFACE' && isHorizontal(h.rotation))
+            // Priority:
+            //   1. DETECTED_SURFACE  (confirmed plane, check horizontal)
+            //   2. ESTIMATED_SURFACE (estimated plane, check horizontal)
+            //   3. DETECTED/ESTIMATED without rotation data (unknown orientation, accept)
+            //   4. FEATURE_POINT     (last resort — only if horizontal normal confirmed)
+            const hit = hits.find(h => h.type === 'DETECTED_SURFACE'  && isHorizontal(h.rotation))
                      || hits.find(h => h.type === 'ESTIMATED_SURFACE' && isHorizontal(h.rotation))
                      || hits.find(h => h.type === 'DETECTED_SURFACE')
-                     || hits.find(h => h.type === 'ESTIMATED_SURFACE');
+                     || hits.find(h => h.type === 'ESTIMATED_SURFACE')
+                     || hits.find(h => h.type === 'FEATURE_POINT'     && isHorizontal(h.rotation));
 
             if (!hit) {
               lines.push('→ SELECTED: none — waiting for surface');
+              lines.push(slamLine);
               reticleGroup.visible = false;
               dbg(lines);
               return;
             }
 
-            lines.push(`→ SELECTED: ${hit.type} @ y=${hit.position.y.toFixed(3)}`);
+            const fallbackNote = hit.type === 'FEATURE_POINT' ? ' (fallback)' : '';
+            lines.push(`→ SELECTED: ${hit.type}${fallbackNote} @ y=${hit.position.y.toFixed(3)}`);
 
             const {position} = hit;
             const target = new THREE.Vector3(position.x, position.y, position.z);
@@ -687,6 +713,7 @@
             reticleGroup.scale.setScalar(0.92 + 0.08 * Math.sin(Date.now() * 0.003));
 
             lines.push(`model @ (${arModel.position.x.toFixed(2)}, ${arModel.position.y.toFixed(2)}, ${arModel.position.z.toFixed(2)})`);
+            lines.push(slamLine);
 
             // Update surface label at most every 500 ms
             const now = Date.now();
