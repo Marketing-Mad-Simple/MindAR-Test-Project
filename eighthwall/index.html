@@ -16,66 +16,95 @@
 
       canvas { position: fixed; inset: 0; }
 
-      /* ── Model loading indicator ── */
-      #model-loading {
+      /* ─── Shared overlay helpers ─────────────────────────────────────────── */
+      .ui-pill {
         position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: white;
-        font-family: Arial, sans-serif;
-        font-size: 0.9rem;
-        background: rgba(0, 0, 0, 0.6);
-        padding: 12px 24px;
-        border-radius: 20px;
-        z-index: 100;
-        display: none;
-        letter-spacing: 0.5px;
-      }
-
-      /* ── Surface placement hint ── */
-      #place-hint {
-        position: fixed;
-        top: 40%;
         left: 50%;
         transform: translateX(-50%);
         background: rgba(0, 0, 0, 0.6);
         color: white;
         font-family: Arial, sans-serif;
-        font-size: 0.85rem;
-        padding: 10px 20px;
-        border-radius: 20px;
+        border-radius: 999px;
+        white-space: nowrap;
         pointer-events: none;
         z-index: 100;
-        white-space: nowrap;
-        display: none;
-        text-align: center;
+        transition: opacity 0.4s ease;
       }
-      #place-hint.visible { display: block; }
 
-      /* ── Controls hint ── */
-      #controls-hint {
+      /* ─── Loading indicator ──────────────────────────────────────────────── */
+      #model-loading {
+        top: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 0.9rem;
+        padding: 12px 24px;
+        letter-spacing: 0.5px;
+        display: none;
+      }
+      #model-loading.visible { display: block; }
+
+      /* ─── Phase 1 — scan hint (no surface yet) ───────────────────────────── */
+      #scan-hint {
+        top: 38%;
+        font-size: 0.88rem;
+        padding: 10px 22px;
+        text-align: center;
+        display: none;
+      }
+      #scan-hint.visible { display: block; }
+
+      /* ─── Phase 1 — gesture hint ─────────────────────────────────────────── */
+      #gesture-hint {
+        bottom: 100px;
+        font-size: 0.78rem;
+        padding: 8px 18px;
+        opacity: 0;
+        display: none;
+        transition: opacity 0.5s ease;
+      }
+      #gesture-hint.visible { display: block; opacity: 1; }
+      #gesture-hint.fade    { opacity: 0; }
+
+      /* ─── Phase 1 — Confirm button ───────────────────────────────────────── */
+      #confirm-btn {
         position: fixed;
-        bottom: 90px;
+        bottom: 24px;
         left: 50%;
         transform: translateX(-50%);
+        background: white;
+        color: #000;
+        font-family: Arial, sans-serif;
+        font-size: 0.95rem;
+        font-weight: bold;
+        letter-spacing: 1px;
+        padding: 14px 40px;
+        border: none;
+        border-radius: 32px;
+        cursor: pointer;
+        z-index: 100;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        display: none;
+      }
+      #confirm-btn.visible { display: block; }
+
+      /* ─── Phase 2 — Redo button (top-right) ──────────────────────────────── */
+      #redo-btn {
+        position: fixed;
+        top: 20px;
+        right: 20px;
         background: rgba(0, 0, 0, 0.55);
         color: white;
         font-family: Arial, sans-serif;
-        font-size: 0.78rem;
-        padding: 8px 16px;
-        border-radius: 20px;
-        pointer-events: none;
+        font-size: 0.82rem;
+        padding: 9px 18px;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 999px;
+        cursor: pointer;
         z-index: 100;
-        white-space: nowrap;
-        opacity: 0;
-        transition: opacity 0.5s ease;
         display: none;
       }
-      #controls-hint.visible { display: block; opacity: 1; }
-      #controls-hint.fade { opacity: 0; }
+      #redo-btn.visible { display: block; }
 
-      /* ── Enquire button ── */
+      /* ─── Phase 2 — Enquire button ───────────────────────────────────────── */
       #enquire-btn {
         position: fixed;
         bottom: 24px;
@@ -87,17 +116,17 @@
         font-size: 0.95rem;
         font-weight: bold;
         letter-spacing: 1px;
-        padding: 14px 36px;
+        padding: 14px 40px;
         border: none;
         border-radius: 32px;
         cursor: pointer;
         z-index: 100;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
         display: none;
       }
       #enquire-btn.visible { display: block; }
 
-      /* ── Sheet overlay ── */
+      /* ─── Bottom sheet overlay ───────────────────────────────────────────── */
       #sheet-overlay {
         display: none;
         position: fixed;
@@ -107,7 +136,7 @@
       }
       #sheet-overlay.open { display: block; }
 
-      /* ── Bottom sheet ── */
+      /* ─── Bottom sheet ───────────────────────────────────────────────────── */
       #enquiry-sheet {
         position: fixed;
         bottom: 0; left: 0; right: 0;
@@ -205,20 +234,26 @@
         text-align: center;
       }
       #thank-you .check { font-size: 2.4rem; }
-      #thank-you h3 { font-size: 1.1rem; margin: 0; }
-      #thank-you p { font-size: 0.85rem; color: #888; margin: 0; }
+      #thank-you h3     { font-size: 1.1rem; margin: 0; }
+      #thank-you p      { font-size: 0.85rem; color: #888; margin: 0; }
     </style>
   </head>
   <body>
-    <!-- 8th Wall renders into this canvas -->
     <canvas id="camerafeed"></canvas>
 
-    <div id="model-loading">Loading model&hellip;</div>
-    <div id="place-hint">Point at a flat surface and tap to place</div>
-    <div id="controls-hint">Tap to move &nbsp;|&nbsp; 1 finger: rotate &nbsp;|&nbsp; Pinch: scale</div>
+    <!-- Phase 0: loading -->
+    <div id="model-loading" class="ui-pill">Loading model&hellip;</div>
 
+    <!-- Phase 1: adjust -->
+    <div id="scan-hint" class="ui-pill">Aim at a flat surface</div>
+    <div id="gesture-hint" class="ui-pill">1 finger: rotate &nbsp;|&nbsp; Pinch: scale</div>
+    <button id="confirm-btn">Confirm Placement</button>
+
+    <!-- Phase 2: locked -->
+    <button id="redo-btn">&#8635; Start Over</button>
     <button id="enquire-btn">Enquire Now</button>
 
+    <!-- Enquiry sheet (phase 2 only) -->
     <div id="sheet-overlay"></div>
     <div id="enquiry-sheet">
       <div id="sheet-drag-handle"></div>
@@ -266,25 +301,49 @@
 
     <script type="module">
       import * as THREE from 'three';
-      import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+      import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
       import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-      // Required so 8th Wall's Threejs pipeline module uses our Three.js instance.
       window.THREE = THREE;
 
+      // ── UI element refs ─────────────────────────────────────────────────────
       const modelLoadingEl = document.getElementById('model-loading');
-      const placeHintEl    = document.getElementById('place-hint');
-      const controlsHint   = document.getElementById('controls-hint');
+      const scanHintEl     = document.getElementById('scan-hint');
+      const gestureHintEl  = document.getElementById('gesture-hint');
+      const confirmBtn     = document.getElementById('confirm-btn');
+      const redoBtn        = document.getElementById('redo-btn');
       const enquireBtn     = document.getElementById('enquire-btn');
+
+      // ── Phase state ─────────────────────────────────────────────────────────
+      // 'loading' → 'adjusting' → 'locked'  (redo goes back to 'adjusting')
+      let phase = 'loading';
+
+      function enterAdjusting() {
+        phase = 'adjusting';
+        scanHintEl.classList.add('visible');
+        gestureHintEl.classList.remove('visible', 'fade');
+        confirmBtn.classList.remove('visible');
+        redoBtn.classList.remove('visible');
+        enquireBtn.classList.remove('visible');
+      }
+
+      function enterLocked() {
+        phase = 'locked';
+        scanHintEl.classList.remove('visible');
+        gestureHintEl.classList.remove('visible');
+        confirmBtn.classList.remove('visible');
+        redoBtn.classList.add('visible');
+        enquireBtn.classList.add('visible');
+      }
 
       // ── 8th Wall pipeline module ────────────────────────────────────────────
       const initScenePipelineModule = () => {
-        let arModel    = null;
+        let arModel     = null;
         let shadowPlane = null;
-        let reticle    = null;
-        let placed     = false;
-        let rotY       = 0;
-        let modelScale = 0.05;
+        let reticle     = null;
+        let rotY        = 0;
+        let modelScale  = 0.05;
+        let surfaceFound = false;  // tracks whether center-screen hit test is hitting anything
 
         const initXrScene = ({scene, camera, renderer}) => {
           renderer.shadowMap.enabled = true;
@@ -303,7 +362,7 @@
           dirLight.shadow.camera.right  = dirLight.shadow.camera.top    =  20;
           scene.add(dirLight);
 
-          // Shadow-receiving plane — repositioned to match each placement surface
+          // Shadow plane — repositioned per-placement so it matches the real surface height
           const planeGeo = new THREE.PlaneGeometry(2000, 2000);
           planeGeo.rotateX(-Math.PI / 2);
           shadowPlane = new THREE.Mesh(planeGeo, new THREE.ShadowMaterial({opacity: 0.5}));
@@ -311,7 +370,7 @@
           shadowPlane.visible = false;
           scene.add(shadowPlane);
 
-          // Reticle ring — tracks detected surfaces while the user aims
+          // Reticle ring — shows where the model will land while scanning
           const ringGeo = new THREE.RingGeometry(0.04, 0.07, 32);
           ringGeo.rotateX(-Math.PI / 2);
           reticle = new THREE.Mesh(
@@ -321,56 +380,65 @@
           reticle.visible = false;
           scene.add(reticle);
 
-          // Initial camera pose hint for XrController (reference value, overridden by SLAM)
           camera.position.set(0, 2, 2);
 
-          // Load building mesh
+          // Load the building mesh
           const draco = new DRACOLoader();
           draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/libs/draco/gltf/');
           const gltfLoader = new GLTFLoader();
           gltfLoader.setDRACOLoader(draco);
 
-          modelLoadingEl.style.display = 'block';
+          modelLoadingEl.classList.add('visible');
 
           gltfLoader.load('../models/Exterior.glb', (gltf) => {
             arModel = gltf.scene;
             arModel.scale.setScalar(modelScale);
-            arModel.visible = false; // hidden until user places it
+            arModel.visible = false;
             arModel.traverse((child) => {
-              if (child.isMesh) {
-                child.castShadow = child.receiveShadow = true;
-              }
+              if (child.isMesh) child.castShadow = child.receiveShadow = true;
             });
             scene.add(arModel);
 
-            modelLoadingEl.style.display = 'none';
-            placeHintEl.classList.add('visible');
+            modelLoadingEl.classList.remove('visible');
+            enterAdjusting();
           });
         };
 
-        // ── Place or move the model to a hit-tested surface position ──────────
-        const placeModel = (relX, relY) => {
-          if (!arModel) return;
-          const hits = XR8.XrController.hitTest(
-            relX, relY,
-            ['DETECTED_SURFACE', 'ESTIMATED_SURFACE', 'FEATURE_POINT']
-          );
-          if (!hits.length) return;
+        // Called every frame. In 'adjusting' phase the model tracks the surface
+        // under screen-centre so the user can see exactly where it will land.
+        // In 'locked' phase we do nothing — SLAM keeps the model world-anchored.
+        const onUpdate = () => {
+          if (!arModel || phase !== 'adjusting') return;
 
-          const {position} = hits[0];
-          arModel.position.set(position.x, position.y, position.z);
-          arModel.visible = true;
+          const hits = XR8.XrController.hitTest(0.5, 0.5, ['DETECTED_SURFACE', 'ESTIMATED_SURFACE']);
 
-          // Align the shadow plane to the placed surface height
-          shadowPlane.position.y = position.y;
-          shadowPlane.visible    = true;
+          if (hits.length) {
+            const {position} = hits[0];
 
-          if (!placed) {
-            placed = true;
-            placeHintEl.classList.remove('visible');
-            controlsHint.classList.add('visible');
-            enquireBtn.classList.add('visible');
-            setTimeout(() => controlsHint.classList.add('fade'), 5000);
+            // Move model & shadow plane to detected surface
+            arModel.position.set(position.x, position.y, position.z);
+            arModel.visible = true;
+            shadowPlane.position.y = position.y;
+            shadowPlane.visible    = true;
+
+            // Move reticle just under the model to mark the surface point
+            reticle.position.set(position.x, position.y + 0.001, position.z);
+            reticle.visible = true;
+
+            if (!surfaceFound) {
+              surfaceFound = true;
+              scanHintEl.classList.remove('visible');
+              gestureHintEl.classList.add('visible');
+              confirmBtn.classList.add('visible');
+              setTimeout(() => gestureHintEl.classList.add('fade'), 6000);
+            }
+          } else {
+            // Lost the surface — keep model where it was, hide reticle
+            reticle.visible = false;
+            if (!surfaceFound) {
+              // Still searching: keep scan hint up
+              scanHintEl.classList.add('visible');
+            }
           }
         };
 
@@ -386,29 +454,30 @@
               facing: camera.quaternion,
             });
 
+            // Prevent scroll/pinch propagation to the browser
+            canvas.addEventListener('touchmove', (e) => e.preventDefault(), {passive: false});
+
+            // ── Gesture handling (Phase 1 only) ──────────────────────────────
             let prevTouches = null;
-            let tapStart    = null;
 
             canvas.addEventListener('touchstart', (e) => {
+              if (phase !== 'adjusting') return;
               prevTouches = Array.from(e.touches).map(t => ({x: t.clientX, y: t.clientY}));
-              if (e.touches.length === 1) {
-                tapStart = {x: e.touches[0].clientX, y: e.touches[0].clientY};
-              }
-            }, true);
+            }, {passive: true});
 
             canvas.addEventListener('touchmove', (e) => {
-              e.preventDefault();
+              if (phase !== 'adjusting' || !arModel?.visible) return;
               const curr = Array.from(e.touches).map(t => ({x: t.clientX, y: t.clientY}));
               if (!prevTouches) { prevTouches = curr; return; }
 
-              if (curr.length === 1 && prevTouches.length === 1 && arModel?.visible) {
+              if (curr.length === 1 && prevTouches.length === 1) {
+                // Single finger → rotate around Y
                 const dx = curr[0].x - prevTouches[0].x;
-                if (Math.abs(dx) > 2) tapStart = null;
                 rotY += dx * THREE.MathUtils.degToRad(0.5);
                 arModel.rotation.y = rotY;
 
-              } else if (curr.length === 2 && prevTouches.length >= 2 && arModel?.visible) {
-                tapStart = null;
+              } else if (curr.length === 2 && prevTouches.length >= 2) {
+                // Pinch → scale
                 const prevD = Math.hypot(prevTouches[0].x - prevTouches[1].x, prevTouches[0].y - prevTouches[1].y);
                 const currD = Math.hypot(curr[0].x - curr[1].x, curr[0].y - curr[1].y);
                 if (prevD > 0) {
@@ -418,37 +487,28 @@
               }
 
               prevTouches = curr;
-            }, {passive: false});
+            }, {passive: true});
 
-            canvas.addEventListener('touchend', (e) => {
-              if (tapStart && e.changedTouches.length === 1) {
-                const t   = e.changedTouches[0];
-                const dx  = t.clientX - tapStart.x;
-                const dy  = t.clientY - tapStart.y;
-                if (Math.hypot(dx, dy) < 10) {
-                  // Hit-test at the exact tap position and place the model there
-                  placeModel(t.clientX / window.innerWidth, t.clientY / window.innerHeight);
-                }
-              }
-              tapStart    = null;
-              prevTouches = Array.from(e.touches).map(t => ({x: t.clientX, y: t.clientY}));
-            });
+            canvas.addEventListener('touchend', () => {
+              prevTouches = null;
+            }, {passive: true});
           },
 
-          // Every frame: move the reticle to the detected surface at screen centre
-          onUpdate: () => {
-            if (!reticle) return;
-            const hits = XR8.XrController.hitTest(0.5, 0.5, ['DETECTED_SURFACE', 'ESTIMATED_SURFACE']);
-            if (hits.length) {
-              const {position} = hits[0];
-              reticle.position.set(position.x, position.y, position.z);
-              reticle.visible = !placed; // hide once model is placed
-            } else {
-              reticle.visible = false;
-            }
-          },
+          onUpdate,
         };
       };
+
+      // ── Confirm / Redo buttons ──────────────────────────────────────────────
+      confirmBtn.addEventListener('click', () => {
+        if (phase !== 'adjusting') return;
+        enterLocked();
+      });
+
+      redoBtn.addEventListener('click', () => {
+        if (phase !== 'locked') return;
+        // Reset surface-found state so hints reappear correctly
+        enterAdjusting();
+      });
 
       // ── Start 8th Wall ──────────────────────────────────────────────────────
       const onxrloaded = () => {
@@ -528,7 +588,6 @@
         setTimeout(closeSheet, 2500);
       });
 
-      // Prevent AR touch events from firing through the bottom sheet
       sheet.addEventListener('touchstart', (e) => e.stopPropagation(), {passive: true});
       sheet.addEventListener('touchmove',  (e) => e.stopPropagation(), {passive: true});
     </script>
