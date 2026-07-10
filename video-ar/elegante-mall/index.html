@@ -4,6 +4,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Elegante Mall — AR Experience</title>
+    <script src="../debug.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
     <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
@@ -136,6 +137,11 @@
       Set height on <a-video> to: image_height / image_width
       (default 1.777 = portrait 9:16; adjust if your target image differs)
     -->
+    <video id="ar-video"
+      loop muted playsinline webkit-playsinline
+      crossorigin="anonymous"
+      style="display:none"></video>
+
     <a-scene
       mindar-image="imageTargetSrc: targets.mind; filterMinCF: 0.001; filterBeta: 0.01;"
       color-space="sRGB"
@@ -143,12 +149,7 @@
       vr-mode-ui="enabled: false"
       device-orientation-permission-ui="enabled: false">
 
-      <a-assets timeout="10000">
-        <video id="ar-video"
-          loop muted playsinline webkit-playsinline
-          crossorigin="anonymous">
-        </video>
-      </a-assets>
+      <a-assets timeout="0"></a-assets>
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
@@ -176,16 +177,25 @@
       // ── HLS setup — starts buffering immediately so first frame is ready fast ─
       const videoEl = document.getElementById('ar-video');
       if (Hls.isSupported()) {
-        // Android / desktop Chrome — hls.js handles everything
+        console.log('HLS: using hls.js');
         const hls = new Hls({ startFragPrefetch: true });
+        hls.on(Hls.Events.MANIFEST_LOADED,  () => console.log('HLS: manifest loaded'));
+        hls.on(Hls.Events.FRAG_LOADED,      (e, d) => console.log('HLS: frag loaded sn=' + d.frag.sn));
+        hls.on(Hls.Events.ERROR,            (e, d) => console.error('HLS error fatal=' + d.fatal + ' ' + d.details));
         hls.loadSource('hls/playlist.m3u8');
         hls.attachMedia(videoEl);
       } else {
-        // iOS Safari — native HLS. load() is required to start prefetching;
-        // without it iOS waits until play() is called, causing the visible delay.
+        console.log('HLS: iOS native — setting src + load()');
         videoEl.src = 'hls/playlist.m3u8';
         videoEl.load();
       }
+
+      videoEl.addEventListener('canplay',       () => console.log('video: canplay readyState=' + videoEl.readyState));
+      videoEl.addEventListener('canplaythrough', () => console.log('video: canplaythrough'));
+      videoEl.addEventListener('playing',        () => console.log('video: playing muted=' + videoEl.muted));
+      videoEl.addEventListener('waiting',        () => console.log('video: waiting (buffering)'));
+      videoEl.addEventListener('stalled',        () => console.log('video: stalled'));
+      videoEl.addEventListener('error',          () => console.error('video: error code=' + (videoEl.error && videoEl.error.code) + ' msg=' + (videoEl.error && videoEl.error.message)));
 
       const sceneEl    = document.querySelector('a-scene');
       const videoPanel = document.getElementById('ar-video-panel');
@@ -206,9 +216,13 @@
         hint.style.display     = 'block';
         logoWrap.style.display = 'flex';
         requestAnimationFrame(() => { logoWrap.style.opacity = '1'; });
+        // Start buffering immediately — muted autoplay is allowed without gesture.
+        // Video plays silently in the background so first frame is ready on targetFound.
+        console.log('AR: arReady — starting background muted play, readyState=' + videoEl.readyState);
+        videoEl.play().then(() => console.log('AR: background play() started')).catch((e) => console.warn('AR: background play() failed — ' + e));
       }
 
-      sceneEl.addEventListener('arReady', showAR);
+      sceneEl.addEventListener('arReady', () => { console.log('AR: arReady'); showAR(); });
 
       sceneEl.addEventListener('arError', () => {
         loading.querySelector('p').textContent = 'Camera access required';
@@ -220,14 +234,19 @@
       target.addEventListener('targetFound', () => {
         isTracking = true;
         if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
-        // Try to play with the desired mute state. iOS blocks unmuted autoplay
-        // even after a successful muted play(), so fall back to muted silently.
+        console.log('AR: targetFound — video paused=' + videoEl.paused + ' readyState=' + videoEl.readyState + ' muted=' + videoEl.muted);
+        // Video is already playing muted from showAR(). Try switching to desired mute state.
+        // On iOS, unmuting without a direct user gesture may be blocked — fall back to muted.
         videoEl.muted = muted;
-        videoEl.play().catch(() => {
-          videoEl.muted = true;
-          muteBtn.textContent = '🔇';
-          videoEl.play().catch(() => {});
-        });
+        if (videoEl.paused) {
+          console.log('AR: video was paused, calling play()');
+          videoEl.play().then(() => console.log('AR: play() resolved')).catch((err) => {
+            console.warn('AR: play() rejected — ' + err + ', retrying muted');
+            videoEl.muted = true;
+            muteBtn.textContent = '🔇';
+            videoEl.play().catch((e) => console.error('AR: muted play() also failed — ' + e));
+          });
+        }
         hint.style.display = 'none';
         videoPanel.emit('panel-open');
         // Show mute button after panel finishes opening
@@ -236,6 +255,7 @@
 
       target.addEventListener('targetLost', () => {
         isTracking = false;
+        console.log('AR: targetLost');
         muteBtn.style.display = 'none';
         hint.style.display    = 'block';
         videoPanel.emit('panel-close');
