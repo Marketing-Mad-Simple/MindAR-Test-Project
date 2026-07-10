@@ -168,12 +168,6 @@
 
       window.THREE = THREE;
 
-      function isHorizontal(rotation) {
-        if (!rotation) return true;
-        const q = new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
-        return new THREE.Vector3(0, 1, 0).applyQuaternion(q).y > 0.5;
-      }
-
       const initScenePipelineModule = () => {
         let model       = null;
         let shadowPlane = null;
@@ -207,9 +201,10 @@
           draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/libs/draco/gltf/');
           const loader = new GLTFLoader();
           loader.setDRACOLoader(draco);
-          loader.load('../models/Exterior.glb', (gltf) => {
+          loader.load('../models/Building.glb', (gltf) => {
             model = gltf.scene;
             model.scale.setScalar(0.05);
+            model.position.set(0, 0, 0); // world origin — recenter() anchors this to the floor
             model.visible = false;
             model.traverse(c => { if (c.isMesh) c.castShadow = c.receiveShadow = true; });
             scene.add(model);
@@ -233,24 +228,13 @@
 
             canvas.addEventListener('touchstart', e => {
               if (e.touches.length !== 1 || !model) return;
-              const t  = e.touches[0];
-              const nx = t.clientX / window.innerWidth;
-              const ny = t.clientY / window.innerHeight;
-              const hits = XR8.XrController.hitTest(nx, ny, ['FEATURE_POINT']);
-
-              const hit = hits.find(h => h.type === 'DETECTED_SURFACE'  && isHorizontal(h.rotation))
-                       || hits.find(h => h.type === 'ESTIMATED_SURFACE' && isHorizontal(h.rotation))
-                       || hits.find(h => h.type === 'DETECTED_SURFACE')
-                       || hits.find(h => h.type === 'ESTIMATED_SURFACE')
-                       || hits.find(h => h.type === 'FEATURE_POINT'     && isHorizontal(h.rotation));
-
-              if (!hit) return;
-
-              const {x, y, z} = hit.position;
-              model.position.set(x, y, z);
-              model.visible          = true;
-              shadowPlane.position.y = y;
-              shadowPlane.visible    = true;
+              // Recenter the SLAM world so y=0 becomes the estimated floor at
+              // the camera's current position — identical to the reference sample.
+              // This guarantees the model lands on the floor regardless of what
+              // surface the user tapped.
+              XR8.XrController.recenter();
+              model.visible       = true;
+              shadowPlane.visible = true;
               document.getElementById('hint').style.display = 'none';
               document.getElementById('enquire-btn').classList.add('visible');
             }, {passive: true});
@@ -259,8 +243,6 @@
       };
 
       const onxrloaded = () => {
-        XR8.XrController.configure({enableWorldPoints: true});
-
         XR8.addCameraPipelineModules([
           XR8.GlTextureRenderer.pipelineModule(),
           XR8.Threejs.pipelineModule(),
