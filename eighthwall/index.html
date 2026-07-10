@@ -475,6 +475,7 @@
         let surfaceReady = false;
         let lastLabelText = '';
         let lastLabelTime = 0;
+        let lockedPosition = null; // world-space anchor saved on Phase 2 entry
 
         // SLAM state — updated every frame from processCpuResult.reality
         let slamStatus     = 'initializing';
@@ -604,8 +605,9 @@
             canvas.addEventListener('touchend', () => { prevTouches = null; }, {passive: true});
 
             onEnterAdjusting = () => {
-              surfaceReady  = false;
-              lastLabelText = '';
+              surfaceReady   = false;
+              lastLabelText  = '';
+              lockedPosition = null;
               surfaceLabelEl.classList.remove('visible');
               if (arModel)      arModel.visible      = false;
               if (reticleGroup) reticleGroup.visible = false;
@@ -614,7 +616,10 @@
             };
 
             onEnterLocked = () => {
-              // Show the anchor disc at the confirmed surface position
+              // Save the confirmed world position so we can re-apply it every frame
+              // and prevent SLAM world-recenter drift from moving the model.
+              lockedPosition = arModel ? arModel.position.clone() : null;
+
               if (anchorDisc && arModel) {
                 anchorDisc.position.set(arModel.position.x, arModel.position.y + 0.003, arModel.position.z);
                 anchorDisc.visible = true;
@@ -653,11 +658,15 @@
             }
 
             if (phase !== 'adjusting') {
+              // Re-apply the saved world position every frame to counteract SLAM drift.
+              if (lockedPosition) {
+                arModel.position.copy(lockedPosition);
+              }
               dbg([
                 ...slamLine,
                 'phase: LOCKED',
-                `model @ (${arModel.position.x.toFixed(3)}, ${arModel.position.y.toFixed(3)}, ${arModel.position.z.toFixed(3)})`,
-                'hitTest: paused (model is placed)',
+                `anchor @ (${lockedPosition ? lockedPosition.x.toFixed(3) + ', ' + lockedPosition.y.toFixed(3) + ', ' + lockedPosition.z.toFixed(3) : 'none'})`,
+                `model  @ (${arModel.position.x.toFixed(3)}, ${arModel.position.y.toFixed(3)}, ${arModel.position.z.toFixed(3)})`,
               ]);
               return;
             }
