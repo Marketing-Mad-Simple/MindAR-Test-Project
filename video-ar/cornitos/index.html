@@ -178,12 +178,15 @@
       // ── HLS setup — starts buffering immediately so first frame is ready fast ─
       const videoEl = document.getElementById('ar-video');
       if (Hls.isSupported()) {
+        // Android / desktop Chrome — hls.js handles everything
         const hls = new Hls({ startFragPrefetch: true });
         hls.loadSource('hls/playlist.m3u8');
         hls.attachMedia(videoEl);
       } else {
-        // iOS Safari — native HLS
+        // iOS Safari — native HLS. load() is required to start prefetching;
+        // without it iOS waits until play() is called, causing the visible delay.
         videoEl.src = 'hls/playlist.m3u8';
+        videoEl.load();
       }
 
       const sceneEl    = document.querySelector('a-scene');
@@ -219,7 +222,14 @@
       target.addEventListener('targetFound', () => {
         isTracking = true;
         if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
-        videoEl.play().then(() => { videoEl.muted = muted; }).catch(() => {});
+        // Try to play with the desired mute state. iOS blocks unmuted autoplay
+        // even after a successful muted play(), so fall back to muted silently.
+        videoEl.muted = muted;
+        videoEl.play().catch(() => {
+          videoEl.muted = true;
+          muteBtn.textContent = '🔇';
+          videoEl.play().catch(() => {});
+        });
         hint.style.display = 'none';
         videoPanel.emit('panel-open');
         // Show mute button after panel finishes opening
