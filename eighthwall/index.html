@@ -340,8 +340,8 @@
       // ── Debug overlay ───────────────────────────────────────────────────────
       const debugToggle = document.getElementById('debug-toggle');
       const debugPanel  = document.getElementById('debug-panel');
-      let debugOpen = true; // start open so it's immediately visible
-      debugPanel.classList.add('open');
+      let debugOpen = false;
+      debugToggle.textContent = 'DBG';
 
       debugToggle.addEventListener('click', () => {
         debugOpen = !debugOpen;
@@ -658,16 +658,20 @@
             }
 
             if (phase !== 'adjusting') {
-              // Re-apply the saved world position every frame to counteract SLAM drift.
+              // Re-apply the saved world position every frame to counteract SLAM drift
+              // and any accidental position mutations.
               if (lockedPosition) {
+                const drift = arModel.position.distanceTo(lockedPosition);
                 arModel.position.copy(lockedPosition);
+                dbg([
+                  ...slamLine,
+                  'phase: LOCKED',
+                  `anchor @ (${lockedPosition.x.toFixed(3)}, ${lockedPosition.y.toFixed(3)}, ${lockedPosition.z.toFixed(3)})`,
+                  `SLAM drift this frame: ${(drift * 100).toFixed(1)} cm`,
+                ]);
+              } else {
+                dbg([...slamLine, 'phase: LOCKED', 'anchor: none (model not placed)']);
               }
-              dbg([
-                ...slamLine,
-                'phase: LOCKED',
-                `anchor @ (${lockedPosition ? lockedPosition.x.toFixed(3) + ', ' + lockedPosition.y.toFixed(3) + ', ' + lockedPosition.z.toFixed(3) : 'none'})`,
-                `model  @ (${arModel.position.x.toFixed(3)}, ${arModel.position.y.toFixed(3)}, ${arModel.position.z.toFixed(3)})`,
-              ]);
               return;
             }
 
@@ -677,7 +681,16 @@
             const hits = XR8.XrController.hitTest(0.5, 0.5, ['FEATURE_POINT']);
 
             // Build debug lines for every raw hit
-            const lines = [`phase: adjusting  |  raw hits: ${hits.length}`];
+            const camY = slamCamPos?.y ?? null;
+            // A surface should be at or below the camera (tables, floor).
+            // Reject anything more than 15 cm above the camera — that's a ceiling or
+            // wall feature point, not something the user is trying to place on.
+            const belowCam = (h) => camY === null || h.position.y < camY + 0.15;
+
+            const lines = [
+              `phase: adjusting  |  raw hits: ${hits.length}`,
+              `cam y: ${camY !== null ? camY.toFixed(3) : 'unknown'}  (below-cam threshold: ${camY !== null ? (camY + 0.15).toFixed(3) : 'n/a'})`,
+            ];
             hits.forEach((h, i) => {
               let normalY = 'n/a';
               let horizFlag = '?';
@@ -689,20 +702,21 @@
               } else {
                 horizFlag = '(no rotation → accepted)';
               }
+              const camCheck = belowCam(h) ? '✓ below cam' : '✗ ABOVE CAM';
               lines.push(`[${i}] ${h.type}`);
-              lines.push(`     y=${h.position.y.toFixed(3)}  normal.y=${normalY}  ${horizFlag}`);
+              lines.push(`     y=${h.position.y.toFixed(3)}  normal.y=${normalY}  ${horizFlag}  ${camCheck}`);
             });
 
             // Priority:
-            //   1. DETECTED_SURFACE  (confirmed plane, check horizontal)
-            //   2. ESTIMATED_SURFACE (estimated plane, check horizontal)
-            //   3. DETECTED/ESTIMATED without rotation data (unknown orientation, accept)
-            //   4. FEATURE_POINT     (last resort — only if horizontal normal confirmed)
-            const hit = hits.find(h => h.type === 'DETECTED_SURFACE'  && isHorizontal(h.rotation))
-                     || hits.find(h => h.type === 'ESTIMATED_SURFACE' && isHorizontal(h.rotation))
-                     || hits.find(h => h.type === 'DETECTED_SURFACE')
-                     || hits.find(h => h.type === 'ESTIMATED_SURFACE')
-                     || hits.find(h => h.type === 'FEATURE_POINT'     && isHorizontal(h.rotation));
+            //   1. DETECTED_SURFACE  (confirmed plane — horizontal + below camera)
+            //   2. ESTIMATED_SURFACE (estimated plane — horizontal + below camera)
+            //   3. DETECTED/ESTIMATED without rotation data but below camera
+            //   4. FEATURE_POINT     (last resort — horizontal normal AND below camera)
+            const hit = hits.find(h => h.type === 'DETECTED_SURFACE'  && isHorizontal(h.rotation) && belowCam(h))
+                     || hits.find(h => h.type === 'ESTIMATED_SURFACE' && isHorizontal(h.rotation) && belowCam(h))
+                     || hits.find(h => h.type === 'DETECTED_SURFACE'  && belowCam(h))
+                     || hits.find(h => h.type === 'ESTIMATED_SURFACE' && belowCam(h))
+                     || hits.find(h => h.type === 'FEATURE_POINT'     && isHorizontal(h.rotation) && belowCam(h));
 
             if (!hit) {
               lines.push('→ SELECTED: none — waiting for surface');
