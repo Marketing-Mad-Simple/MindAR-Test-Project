@@ -154,11 +154,13 @@
       <a-entity mindar-image-target="targetIndex: 0">
 
         <!-- Video panel -->
-        <!-- Image: 1086x1448 → height = 1448/1086 = 1.333 (4:3) -->
-        <a-video src="#ar-video"
+        <!-- Image: 1086x1448 → height = 1448/1086 = 1.333 (4:3) — collapses on Y, expands open/closed on tracking events -->
+        <a-video id="ar-video-panel" src="#ar-video"
           width="1" height="1.333"
           position="0 0 0.001"
-          rotation="0 0 0">
+          scale="1 0 1"
+          animation__open="property: scale; to: 1 1 1; dur: 450; easing: easeOutCubic; startEvents: panel-open; autoplay: false"
+          animation__close="property: scale; to: 1 0 1; dur: 300; easing: easeInCubic; startEvents: panel-close; autoplay: false">
         </a-video>
 
         <!--
@@ -170,15 +172,17 @@
     </a-scene>
 
     <script>
-      const sceneEl  = document.querySelector('a-scene');
-      const videoEl  = document.getElementById('ar-video');
-      const loading  = document.getElementById('loading-screen');
-      const hint     = document.getElementById('hint');
-      const logoWrap = document.getElementById('brand-logo-wrap');
-      const muteBtn  = document.getElementById('mute-btn');
-      const anchor   = document.getElementById('mute-anchor');
+      const sceneEl    = document.querySelector('a-scene');
+      const videoEl    = document.getElementById('ar-video');
+      const videoPanel = document.getElementById('ar-video-panel');
+      const loading    = document.getElementById('loading-screen');
+      const hint       = document.getElementById('hint');
+      const logoWrap   = document.getElementById('brand-logo-wrap');
+      const muteBtn    = document.getElementById('mute-btn');
+      const anchor     = document.getElementById('mute-anchor');
       let muted = false;
       let isTracking = false;
+      let closeTimer = null;
 
       // ── AR lifecycle ──────────────────────────────────────────────────────
       function showAR() {
@@ -201,17 +205,25 @@
 
       target.addEventListener('targetFound', () => {
         isTracking = true;
+        if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
         videoEl.play().then(() => { videoEl.muted = muted; }).catch(() => {});
-        hint.style.display    = 'none';
-        muteBtn.style.display = 'flex';
+        hint.style.display = 'none';
+        videoPanel.emit('panel-open');
+        // Show mute button after panel finishes opening
+        setTimeout(() => { if (isTracking) muteBtn.style.display = 'flex'; }, 450);
       });
 
       target.addEventListener('targetLost', () => {
         isTracking = false;
-        videoEl.pause();
-        videoEl.currentTime   = 0;
-        hint.style.display    = 'block';
         muteBtn.style.display = 'none';
+        hint.style.display    = 'block';
+        videoPanel.emit('panel-close');
+        // Pause video after close animation finishes
+        closeTimer = setTimeout(() => {
+          videoEl.pause();
+          videoEl.currentTime = 0;
+          closeTimer = null;
+        }, 300);
       });
 
       // ── Per-frame: project anchor world pos → button screen pos ──────────
