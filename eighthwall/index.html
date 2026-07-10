@@ -147,6 +147,43 @@
       }
       #surface-label.visible { display: block; }
 
+      /* ── Debug overlay ─────────────────────────────────────────── */
+      #debug-toggle {
+        position: fixed;
+        top: 20px;
+        left: 20px;
+        background: rgba(255, 100, 0, 0.9);
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 0.7rem;
+        font-family: monospace;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+        z-index: 300;
+        cursor: pointer;
+      }
+      #debug-panel {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        max-height: 45vh;
+        overflow-y: auto;
+        background: rgba(0, 0, 0, 0.88);
+        color: #00ff88;
+        font-family: monospace;
+        font-size: 0.62rem;
+        line-height: 1.5;
+        padding: 10px 12px 20px;
+        z-index: 299;
+        display: none;
+        white-space: pre;
+        -webkit-overflow-scrolling: touch;
+      }
+      #debug-panel.open { display: block; }
+
       /* ── Desktop preview badge ──────────────────────────────────── */
       #desktop-badge {
         position: fixed;
@@ -234,8 +271,11 @@
     <video id="desktop-video" autoplay playsinline muted></video>
     <canvas id="camerafeed"></canvas>
 
+    <button id="debug-toggle">DBG</button>
+    <div id="debug-panel"></div>
+
     <div id="model-loading" class="pill">Loading model&hellip;</div>
-    <div id="scan-hint"    class="pill">Aim at a flat surface</div>
+    <div id="scan-hint"    class="pill">Slowly move camera, then aim at a flat surface</div>
     <div id="surface-label" class="pill"></div>
     <div id="gesture-hint" class="pill"></div>
     <div id="desktop-badge">DESKTOP PREVIEW</div>
@@ -296,6 +336,34 @@
       import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
       window.THREE = THREE;
+
+      // ── Debug overlay ───────────────────────────────────────────────────────
+      const debugToggle = document.getElementById('debug-toggle');
+      const debugPanel  = document.getElementById('debug-panel');
+      let debugOpen = true; // start open so it's immediately visible
+      debugPanel.classList.add('open');
+
+      debugToggle.addEventListener('click', () => {
+        debugOpen = !debugOpen;
+        debugPanel.classList.toggle('open', debugOpen);
+        debugToggle.textContent = debugOpen ? 'DBG ×' : 'DBG';
+      });
+
+      let _dbgFrames = 0;
+      let _dbgLastFpsTime = Date.now();
+      let _dbgFps = 0;
+
+      function dbg(lines) {
+        if (!debugOpen) return;
+        _dbgFrames++;
+        const now = Date.now();
+        if (now - _dbgLastFpsTime >= 1000) {
+          _dbgFps = _dbgFrames;
+          _dbgFrames = 0;
+          _dbgLastFpsTime = now;
+        }
+        debugPanel.textContent = `FPS: ${_dbgFps}  |  ${new Date().toLocaleTimeString()}\n` + lines.join('\n');
+      }
 
       // ── UI refs ─────────────────────────────────────────────────────────────
       const modelLoadingEl = document.getElementById('model-loading');
@@ -408,13 +476,12 @@
         let lastLabelText = '';
         let lastLabelTime = 0;
 
-        // Returns true only if the hit surface normal points roughly upward.
-        // Rejects vertical walls, ceilings, and "air" estimated surfaces.
+        // Returns true if the surface normal points within ~60° of straight up.
+        // If rotation is absent (no normal data), returns true rather than rejecting.
         function isHorizontal(rotation) {
-          if (!rotation) return false;
+          if (!rotation) return true;
           const q = new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
-          const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
-          return normal.y > 0.7; // within ~45° of straight up
+          return new THREE.Vector3(0, 1, 0).applyQuaternion(q).y > 0.5;
         }
 
         const scenePipelineModule = () => ({
@@ -551,30 +618,64 @@
           },
 
           onUpdate: () => {
-            if (!arModel || phase !== 'adjusting') return;
-
-            const hits = XR8.XrController.hitTest(0.5, 0.5, ['FEATURE_POINT']);
-
-            // Only accept hits on roughly-horizontal surfaces.
-            // This rejects vertical walls, ceilings, and "air" estimated surfaces.
-            const flatHits = hits.filter(h => isHorizontal(h.rotation));
-
-            // Prefer a firmly-detected plane; fall back to an estimated one.
-            const hit = flatHits.find(h => h.type === 'DETECTED_SURFACE')
-                     || flatHits.find(h => h.type === 'ESTIMATED_SURFACE');
-
-            if (!hit) {
-              reticleGroup.visible = false;
+            if (!arModel) {
+              dbg(['phase: ' + phase, 'arModel: not loaded yet']);
               return;
             }
+
+            if (phase !== 'adjusting') {
+              // Show locked-state info without running hitTest
+              dbg([
+                'phase: LOCKED',
+                `model @ (${arModel.position.x.toFixed(3)}, ${arModel.position.y.toFixed(3)}, ${arModel.position.z.toFixed(3)})`,
+                'hitTest: paused (model is placed)',
+              ]);
+              return;
+            }
+
+            // [] = surfaces only (DETECTED_SURFACE, ESTIMATED_SURFACE).
+            // ['FEATURE_POINT'] would add raw 3D points which have no surface normal and cause air placement.
+            const hits = XR8.XrController.hitTest(0.5, 0.5, []);
+
+            // Build debug lines for every raw hit
+            const lines = [`phase: adjusting  |  raw hits: ${hits.length}`];
+            hits.forEach((h, i) => {
+              let normalY = 'n/a';
+              let horizFlag = '?';
+              if (h.rotation) {
+                const q = new THREE.Quaternion(h.rotation.x, h.rotation.y, h.rotation.z, h.rotation.w);
+                const ny = new THREE.Vector3(0, 1, 0).applyQuaternion(q).y;
+                normalY   = ny.toFixed(3);
+                horizFlag = ny > 0.5 ? '✓ horiz' : '✗ NOT horiz';
+              } else {
+                horizFlag = '(no rotation → accepted)';
+              }
+              lines.push(`[${i}] ${h.type}`);
+              lines.push(`     y=${h.position.y.toFixed(3)}  normal.y=${normalY}  ${horizFlag}`);
+            });
+
+            // Select best hit using the same priority as the placement logic
+            const hit = hits.find(h => h.type === 'DETECTED_SURFACE' && isHorizontal(h.rotation))
+                     || hits.find(h => h.type === 'ESTIMATED_SURFACE' && isHorizontal(h.rotation))
+                     || hits.find(h => h.type === 'DETECTED_SURFACE')
+                     || hits.find(h => h.type === 'ESTIMATED_SURFACE');
+
+            if (!hit) {
+              lines.push('→ SELECTED: none — waiting for surface');
+              reticleGroup.visible = false;
+              dbg(lines);
+              return;
+            }
+
+            lines.push(`→ SELECTED: ${hit.type} @ y=${hit.position.y.toFixed(3)}`);
 
             const {position} = hit;
             const target = new THREE.Vector3(position.x, position.y, position.z);
 
             if (!arModel.visible) {
-              arModel.position.copy(target); // snap on first valid hit
+              arModel.position.copy(target);
             } else {
-              arModel.position.lerp(target, 0.12); // smooth tracking thereafter
+              arModel.position.lerp(target, 0.12);
             }
 
             arModel.visible        = true;
@@ -585,7 +686,9 @@
             reticleGroup.visible = true;
             reticleGroup.scale.setScalar(0.92 + 0.08 * Math.sin(Date.now() * 0.003));
 
-            // Update the surface label at most every 500 ms so it's live but not thrashing the DOM
+            lines.push(`model @ (${arModel.position.x.toFixed(2)}, ${arModel.position.y.toFixed(2)}, ${arModel.position.z.toFixed(2)})`);
+
+            // Update surface label at most every 500 ms
             const now = Date.now();
             const label = arModel.position.y > 0.2
               ? `Elevated surface (~${(arModel.position.y * 100).toFixed(0)} cm high)`
@@ -601,6 +704,8 @@
               surfaceLabelEl.classList.add('visible');
               showSurfaceReadyUI('1 finger: rotate  |  Pinch: scale');
             }
+
+            dbg(lines);
           },
         });
 
@@ -729,6 +834,12 @@
           requestAnimationFrame(animate);
           if (controls.enabled) controls.update();
           renderer.render(scene, camera);
+          dbg([
+            'mode: DESKTOP PREVIEW',
+            'phase: ' + phase,
+            arModel ? `model @ (${arModel.position.x.toFixed(2)}, ${arModel.position.y.toFixed(2)}, ${arModel.position.z.toFixed(2)})` : 'model: loading',
+            `orbitControls: ${controls.enabled ? 'enabled' : 'disabled'}`,
+          ]);
         })();
       }
 
