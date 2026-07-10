@@ -33,6 +33,26 @@
         letter-spacing: 0.5px;
       }
 
+      /* ── Surface placement hint ── */
+      #place-hint {
+        position: fixed;
+        top: 40%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0, 0, 0, 0.6);
+        color: white;
+        font-family: Arial, sans-serif;
+        font-size: 0.85rem;
+        padding: 10px 20px;
+        border-radius: 20px;
+        pointer-events: none;
+        z-index: 100;
+        white-space: nowrap;
+        display: none;
+        text-align: center;
+      }
+      #place-hint.visible { display: block; }
+
       /* ── Controls hint ── */
       #controls-hint {
         position: fixed;
@@ -194,7 +214,8 @@
     <canvas id="camerafeed"></canvas>
 
     <div id="model-loading">Loading model&hellip;</div>
-    <div id="controls-hint">Tap to recentre &nbsp;|&nbsp; 1 finger: rotate &nbsp;|&nbsp; Pinch: scale</div>
+    <div id="place-hint">Point at a flat surface and tap to place</div>
+    <div id="controls-hint">Tap to move &nbsp;|&nbsp; 1 finger: rotate &nbsp;|&nbsp; Pinch: scale</div>
 
     <button id="enquire-btn">Enquire Now</button>
 
@@ -248,86 +269,109 @@
       import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
       import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-      // Required so that 8th Wall's Threejs pipeline module uses our Three.js instance.
+      // Required so 8th Wall's Threejs pipeline module uses our Three.js instance.
       window.THREE = THREE;
 
       const modelLoadingEl = document.getElementById('model-loading');
+      const placeHintEl    = document.getElementById('place-hint');
       const controlsHint   = document.getElementById('controls-hint');
       const enquireBtn     = document.getElementById('enquire-btn');
 
       // ── 8th Wall pipeline module ────────────────────────────────────────────
       const initScenePipelineModule = () => {
         let arModel    = null;
+        let shadowPlane = null;
+        let reticle    = null;
+        let placed     = false;
         let rotY       = 0;
         let modelScale = 0.05;
 
         const initXrScene = ({scene, camera, renderer}) => {
-          // Shadows
           renderer.shadowMap.enabled = true;
           renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
           renderer.outputColorSpace  = THREE.SRGBColorSpace;
 
-          // Ambient fill so the model isn't completely unlit on its shadow side
           scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 
-          // Key light with shadow casting
           const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
           dirLight.position.set(5, 10, 7);
-          dirLight.castShadow              = true;
-          dirLight.shadow.mapSize.width    = 2048;
-          dirLight.shadow.mapSize.height   = 2048;
-          dirLight.shadow.camera.near      = 0.1;
-          dirLight.shadow.camera.far       = 200;
-          dirLight.shadow.camera.left      = -20;
-          dirLight.shadow.camera.right     =  20;
-          dirLight.shadow.camera.top       =  20;
-          dirLight.shadow.camera.bottom    = -20;
+          dirLight.castShadow           = true;
+          dirLight.shadow.mapSize.width = dirLight.shadow.mapSize.height = 2048;
+          dirLight.shadow.camera.near   = 0.1;
+          dirLight.shadow.camera.far    = 200;
+          dirLight.shadow.camera.left   = dirLight.shadow.camera.bottom = -20;
+          dirLight.shadow.camera.right  = dirLight.shadow.camera.top    =  20;
           scene.add(dirLight);
 
-          // Invisible ground plane that only receives shadows — reveals depth cues
+          // Shadow-receiving plane — repositioned to match each placement surface
           const planeGeo = new THREE.PlaneGeometry(2000, 2000);
           planeGeo.rotateX(-Math.PI / 2);
-          const planeMat = new THREE.ShadowMaterial({opacity: 0.5});
-          const plane = new THREE.Mesh(planeGeo, planeMat);
-          plane.receiveShadow = true;
-          scene.add(plane);
+          shadowPlane = new THREE.Mesh(planeGeo, new THREE.ShadowMaterial({opacity: 0.5}));
+          shadowPlane.receiveShadow = true;
+          shadowPlane.visible = false;
+          scene.add(shadowPlane);
 
-          // Set an initial camera height so XrController has a valid starting pose
-          camera.position.set(0, 3, 0);
-
-          // Load the building mesh
-          const draco = new DRACOLoader();
-          draco.setDecoderPath(
-            'https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/libs/draco/gltf/'
+          // Reticle ring — tracks detected surfaces while the user aims
+          const ringGeo = new THREE.RingGeometry(0.04, 0.07, 32);
+          ringGeo.rotateX(-Math.PI / 2);
+          reticle = new THREE.Mesh(
+            ringGeo,
+            new THREE.MeshBasicMaterial({color: 0xffffff, opacity: 0.85, transparent: true, side: THREE.DoubleSide})
           );
+          reticle.visible = false;
+          scene.add(reticle);
+
+          // Initial camera pose hint for XrController (reference value, overridden by SLAM)
+          camera.position.set(0, 2, 2);
+
+          // Load building mesh
+          const draco = new DRACOLoader();
+          draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/libs/draco/gltf/');
           const gltfLoader = new GLTFLoader();
           gltfLoader.setDRACOLoader(draco);
 
           modelLoadingEl.style.display = 'block';
 
-          gltfLoader.load(
-            '../models/Exterior.glb',
-            (gltf) => {
-              arModel = gltf.scene;
-              arModel.scale.setScalar(modelScale);
-              // Place at SLAM ground plane origin. Adjust Y if the model floats or sinks.
-              arModel.position.set(0, 0, 0);
+          gltfLoader.load('../models/Exterior.glb', (gltf) => {
+            arModel = gltf.scene;
+            arModel.scale.setScalar(modelScale);
+            arModel.visible = false; // hidden until user places it
+            arModel.traverse((child) => {
+              if (child.isMesh) {
+                child.castShadow = child.receiveShadow = true;
+              }
+            });
+            scene.add(arModel);
 
-              arModel.traverse((child) => {
-                if (child.isMesh) {
-                  child.castShadow    = true;
-                  child.receiveShadow = true;
-                }
-              });
-              scene.add(arModel);
+            modelLoadingEl.style.display = 'none';
+            placeHintEl.classList.add('visible');
+          });
+        };
 
-              modelLoadingEl.style.display = 'none';
-              controlsHint.classList.add('visible');
-              enquireBtn.classList.add('visible');
-              // Fade hint after 5 s
-              setTimeout(() => controlsHint.classList.add('fade'), 5000);
-            }
+        // ── Place or move the model to a hit-tested surface position ──────────
+        const placeModel = (relX, relY) => {
+          if (!arModel) return;
+          const hits = XR8.XrController.hitTest(
+            relX, relY,
+            ['DETECTED_SURFACE', 'ESTIMATED_SURFACE', 'FEATURE_POINT']
           );
+          if (!hits.length) return;
+
+          const {position} = hits[0];
+          arModel.position.set(position.x, position.y, position.z);
+          arModel.visible = true;
+
+          // Align the shadow plane to the placed surface height
+          shadowPlane.position.y = position.y;
+          shadowPlane.visible    = true;
+
+          if (!placed) {
+            placed = true;
+            placeHintEl.classList.remove('visible');
+            controlsHint.classList.add('visible');
+            enquireBtn.classList.add('visible');
+            setTimeout(() => controlsHint.classList.add('fade'), 5000);
+          }
         };
 
         return {
@@ -337,13 +381,11 @@
             const {scene, camera, renderer} = XR8.Threejs.xrScene();
             initXrScene({scene, camera, renderer});
 
-            // Sync XR controller with initial camera pose
             XR8.XrController.updateCameraProjectionMatrix({
               origin: camera.position,
               facing: camera.quaternion,
             });
 
-            // ── Touch gesture handling ──────────────────────────────────────
             let prevTouches = null;
             let tapStart    = null;
 
@@ -358,24 +400,17 @@
               e.preventDefault();
               const curr = Array.from(e.touches).map(t => ({x: t.clientX, y: t.clientY}));
               if (!prevTouches) { prevTouches = curr; return; }
-              if (!arModel)     { prevTouches = curr; return; }
 
-              if (curr.length === 1 && prevTouches.length === 1) {
+              if (curr.length === 1 && prevTouches.length === 1 && arModel?.visible) {
                 const dx = curr[0].x - prevTouches[0].x;
-                if (Math.abs(dx) > 2) tapStart = null; // moved — not a tap
+                if (Math.abs(dx) > 2) tapStart = null;
                 rotY += dx * THREE.MathUtils.degToRad(0.5);
                 arModel.rotation.y = rotY;
 
-              } else if (curr.length === 2 && prevTouches.length >= 2) {
+              } else if (curr.length === 2 && prevTouches.length >= 2 && arModel?.visible) {
                 tapStart = null;
-                const prevD = Math.hypot(
-                  prevTouches[0].x - prevTouches[1].x,
-                  prevTouches[0].y - prevTouches[1].y
-                );
-                const currD = Math.hypot(
-                  curr[0].x - curr[1].x,
-                  curr[0].y - curr[1].y
-                );
+                const prevD = Math.hypot(prevTouches[0].x - prevTouches[1].x, prevTouches[0].y - prevTouches[1].y);
+                const currD = Math.hypot(curr[0].x - curr[1].x, curr[0].y - curr[1].y);
                 if (prevD > 0) {
                   modelScale = Math.max(0.005, Math.min(0.5, modelScale * (currD / prevD)));
                   arModel.scale.setScalar(modelScale);
@@ -386,17 +421,31 @@
             }, {passive: false});
 
             canvas.addEventListener('touchend', (e) => {
-              // A touch that barely moved counts as a tap → recenter SLAM origin
               if (tapStart && e.changedTouches.length === 1) {
-                const dx = e.changedTouches[0].clientX - tapStart.x;
-                const dy = e.changedTouches[0].clientY - tapStart.y;
+                const t   = e.changedTouches[0];
+                const dx  = t.clientX - tapStart.x;
+                const dy  = t.clientY - tapStart.y;
                 if (Math.hypot(dx, dy) < 10) {
-                  XR8.XrController.recenter();
+                  // Hit-test at the exact tap position and place the model there
+                  placeModel(t.clientX / window.innerWidth, t.clientY / window.innerHeight);
                 }
               }
               tapStart    = null;
               prevTouches = Array.from(e.touches).map(t => ({x: t.clientX, y: t.clientY}));
             });
+          },
+
+          // Every frame: move the reticle to the detected surface at screen centre
+          onUpdate: () => {
+            if (!reticle) return;
+            const hits = XR8.XrController.hitTest(0.5, 0.5, ['DETECTED_SURFACE', 'ESTIMATED_SURFACE']);
+            if (hits.length) {
+              const {position} = hits[0];
+              reticle.position.set(position.x, position.y, position.z);
+              reticle.visible = !placed; // hide once model is placed
+            } else {
+              reticle.visible = false;
+            }
           },
         };
       };
@@ -404,16 +453,15 @@
       // ── Start 8th Wall ──────────────────────────────────────────────────────
       const onxrloaded = () => {
         XR8.addCameraPipelineModules([
-          XR8.GlTextureRenderer.pipelineModule(),    // draws the camera feed
-          XR8.Threejs.pipelineModule(),              // creates a Three.js AR scene
-          XR8.XrController.pipelineModule(),         // enables SLAM surface tracking
-          LandingPage.pipelineModule(),              // unsupported browser detection
-          XRExtras.FullWindowCanvas.pipelineModule(), // fills the canvas to the window
-          XRExtras.Loading.pipelineModule(),          // startup loading screen
-          XRExtras.RuntimeError.pipelineModule(),     // error display on crash
-          initScenePipelineModule(),                 // our custom scene content
+          XR8.GlTextureRenderer.pipelineModule(),
+          XR8.Threejs.pipelineModule(),
+          XR8.XrController.pipelineModule(),
+          LandingPage.pipelineModule(),
+          XRExtras.FullWindowCanvas.pipelineModule(),
+          XRExtras.Loading.pipelineModule(),
+          XRExtras.RuntimeError.pipelineModule(),
+          initScenePipelineModule(),
         ]);
-
         XR8.run({canvas: document.getElementById('camerafeed')});
       };
 
