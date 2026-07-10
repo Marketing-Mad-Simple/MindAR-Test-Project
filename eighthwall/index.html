@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Surface Placement AR</title>
 
-    <!-- 8th Wall Engine (SLAM world-tracking) — loaded on mobile only -->
     <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js" async crossorigin="anonymous" data-preload-chunks="slam"></script>
     <script src="https://cdn.jsdelivr.net/npm/@8thwall/xrextras@1/dist/xrextras.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@8thwall/landing-page@1/dist/landing-page.js" crossorigin="anonymous"></script>
@@ -13,106 +12,22 @@
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body { overflow: hidden; background: #000; }
-
       canvas { position: fixed; inset: 0; }
-
-      /* desktop webcam sits behind the transparent canvas */
-      #desktop-video {
+      #hint {
         position: fixed;
-        inset: 0;
-        width: 100%; height: 100%;
-        object-fit: cover;
-        z-index: 0;
-        display: none;
-      }
-
-      /* ── Shared pill helper ─────────────────────────────────────── */
-      .pill {
-        position: fixed;
+        bottom: 40px;
         left: 50%;
         transform: translateX(-50%);
-        background: rgba(0,0,0,0.6);
+        background: rgba(0, 0, 0, 0.6);
         color: white;
         font-family: Arial, sans-serif;
-        border-radius: 999px;
-        white-space: nowrap;
-        pointer-events: none;
-        z-index: 100;
-      }
-
-      /* ── Loading ────────────────────────────────────────────────── */
-      #model-loading {
-        top: 50%;
-        transform: translate(-50%, -50%);
-        font-size: 0.9rem;
-        padding: 12px 24px;
-        letter-spacing: 0.5px;
-        display: none;
-      }
-      #model-loading.visible { display: block; }
-
-      /* ── Phase 1: scan hint ─────────────────────────────────────── */
-      #scan-hint {
-        top: 38%;
         font-size: 0.88rem;
         padding: 10px 22px;
-        display: none;
-      }
-      #scan-hint.visible { display: block; }
-
-      /* ── Phase 1: gesture hint ──────────────────────────────────── */
-      #gesture-hint {
-        bottom: 100px;
-        font-size: 0.78rem;
-        padding: 8px 18px;
-        opacity: 0;
-        display: none;
-        transition: opacity 0.5s ease;
-      }
-      #gesture-hint.visible { display: block; opacity: 1; }
-      #gesture-hint.fade    { opacity: 0; }
-
-      /* ── Phase 1: Confirm button ────────────────────────────────── */
-      #confirm-btn {
-        position: fixed;
-        bottom: 24px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: white;
-        color: #000;
-        font-family: Arial, sans-serif;
-        font-size: 0.95rem;
-        font-weight: bold;
-        letter-spacing: 1px;
-        padding: 14px 40px;
-        border: none;
-        border-radius: 32px;
-        cursor: pointer;
-        z-index: 100;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        display: none;
-      }
-      #confirm-btn.visible { display: block; }
-
-      /* ── Phase 2: Redo button ───────────────────────────────────── */
-      #redo-btn {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: rgba(0,0,0,0.55);
-        color: white;
-        font-family: Arial, sans-serif;
-        font-size: 0.82rem;
-        padding: 9px 18px;
-        border: 1px solid rgba(255,255,255,0.25);
         border-radius: 999px;
-        cursor: pointer;
-        z-index: 100;
-        display: none;
+        pointer-events: none;
+        white-space: nowrap;
       }
-      #redo-btn.visible { display: block; }
 
-      /* ── Phase 2: Enquire button ────────────────────────────────── */
       #enquire-btn {
         position: fixed;
         bottom: 24px;
@@ -134,77 +49,6 @@
       }
       #enquire-btn.visible { display: block; }
 
-      /* ── Surface label (phase 1 — shows which surface is detected) ─ */
-      #surface-label {
-        top: calc(38% + 44px);
-        font-size: 0.78rem;
-        padding: 7px 16px;
-        display: none;
-        background: rgba(255,255,255,0.12);
-        border: 1px solid rgba(255,255,255,0.2);
-        color: #ddd;
-        letter-spacing: 0.3px;
-      }
-      #surface-label.visible { display: block; }
-
-      /* ── Debug overlay ─────────────────────────────────────────── */
-      #debug-toggle {
-        position: fixed;
-        top: 20px;
-        left: 20px;
-        background: rgba(255, 100, 0, 0.9);
-        color: white;
-        border: none;
-        border-radius: 6px;
-        padding: 8px 12px;
-        font-size: 0.7rem;
-        font-family: monospace;
-        font-weight: bold;
-        letter-spacing: 0.5px;
-        z-index: 300;
-        cursor: pointer;
-      }
-      #debug-panel {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        max-height: 45vh;
-        overflow-y: auto;
-        background: rgba(0, 0, 0, 0.88);
-        color: #00ff88;
-        font-family: monospace;
-        font-size: 0.62rem;
-        line-height: 1.5;
-        padding: 10px 12px 20px;
-        z-index: 299;
-        display: none;
-        white-space: pre;
-        -webkit-overflow-scrolling: touch;
-      }
-      #debug-panel.open { display: block; }
-
-      /* ── Desktop preview badge ──────────────────────────────────── */
-      #desktop-badge {
-        position: fixed;
-        top: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: rgba(255,160,0,0.85);
-        color: #000;
-        font-family: Arial, sans-serif;
-        font-size: 0.72rem;
-        font-weight: bold;
-        letter-spacing: 1px;
-        padding: 5px 14px;
-        border-radius: 999px;
-        z-index: 100;
-        display: none;
-        pointer-events: none;
-      }
-      #desktop-badge.visible { display: block; }
-
-      /* ── Sheet overlay ──────────────────────────────────────────── */
       #sheet-overlay {
         display: none;
         position: fixed;
@@ -214,7 +58,6 @@
       }
       #sheet-overlay.open { display: block; }
 
-      /* ── Bottom sheet ───────────────────────────────────────────── */
       #enquiry-sheet {
         position: fixed;
         bottom: 0; left: 0; right: 0;
@@ -268,20 +111,9 @@
     </style>
   </head>
   <body>
-    <video id="desktop-video" autoplay playsinline muted></video>
     <canvas id="camerafeed"></canvas>
+    <div id="hint">Tap a surface to place the model</div>
 
-    <button id="debug-toggle">DBG</button>
-    <div id="debug-panel"></div>
-
-    <div id="model-loading" class="pill">Loading model&hellip;</div>
-    <div id="scan-hint"    class="pill">Slowly move camera, then aim at a flat surface</div>
-    <div id="surface-label" class="pill"></div>
-    <div id="gesture-hint" class="pill"></div>
-    <div id="desktop-badge">DESKTOP PREVIEW</div>
-
-    <button id="confirm-btn">Confirm Placement</button>
-    <button id="redo-btn">&#8635; Start Over</button>
     <button id="enquire-btn">Enquire Now</button>
 
     <div id="sheet-overlay"></div>
@@ -331,444 +163,102 @@
 
     <script type="module">
       import * as THREE from 'three';
-      import { GLTFLoader }    from 'three/addons/loaders/GLTFLoader.js';
-      import { DRACOLoader }   from 'three/addons/loaders/DRACOLoader.js';
-      import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+      import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
+      import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
       window.THREE = THREE;
 
-      // ── Debug overlay ───────────────────────────────────────────────────────
-      const debugToggle = document.getElementById('debug-toggle');
-      const debugPanel  = document.getElementById('debug-panel');
-      let debugOpen = false;
-      debugToggle.textContent = 'DBG';
-
-      debugToggle.addEventListener('click', () => {
-        debugOpen = !debugOpen;
-        debugPanel.classList.toggle('open', debugOpen);
-        debugToggle.textContent = debugOpen ? 'DBG ×' : 'DBG';
-      });
-
-      let _dbgFrames = 0;
-      let _dbgLastFpsTime = Date.now();
-      let _dbgFps = 0;
-
-      function dbg(lines) {
-        if (!debugOpen) return;
-        _dbgFrames++;
-        const now = Date.now();
-        if (now - _dbgLastFpsTime >= 1000) {
-          _dbgFps = _dbgFrames;
-          _dbgFrames = 0;
-          _dbgLastFpsTime = now;
-        }
-        debugPanel.textContent = `FPS: ${_dbgFps}  |  ${new Date().toLocaleTimeString()}\n` + lines.join('\n');
+      function isHorizontal(rotation) {
+        if (!rotation) return true;
+        const q = new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
+        return new THREE.Vector3(0, 1, 0).applyQuaternion(q).y > 0.5;
       }
 
-      // ── UI refs ─────────────────────────────────────────────────────────────
-      const modelLoadingEl = document.getElementById('model-loading');
-      const scanHintEl     = document.getElementById('scan-hint');
-      const surfaceLabelEl = document.getElementById('surface-label');
-      const gestureHintEl  = document.getElementById('gesture-hint');
-      const desktopBadge   = document.getElementById('desktop-badge');
-      const confirmBtn     = document.getElementById('confirm-btn');
-      const redoBtn        = document.getElementById('redo-btn');
-      const enquireBtn     = document.getElementById('enquire-btn');
+      const initScenePipelineModule = () => {
+        let model       = null;
+        let shadowPlane = null;
 
-      // ── Phase state ──────────────────────────────────────────────────────────
-      let phase = 'loading'; // 'loading' | 'adjusting' | 'locked'
+        const initXrScene = ({scene, camera, renderer}) => {
+          renderer.shadowMap.enabled = true;
+          renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
 
-      // Mode-specific callbacks wired up below
-      let onEnterAdjusting = () => {};
-      let onEnterLocked    = () => {};
+          scene.add(new THREE.AmbientLight(0xffffff, 1.2));
 
-      function enterAdjusting() {
-        phase = 'adjusting';
-        scanHintEl.classList.add('visible');
-        surfaceLabelEl.classList.remove('visible');
-        gestureHintEl.classList.remove('visible', 'fade');
-        confirmBtn.classList.remove('visible');
-        redoBtn.classList.remove('visible');
-        enquireBtn.classList.remove('visible');
-        onEnterAdjusting();
-      }
+          const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+          dirLight.position.set(5, 10, 7);
+          dirLight.castShadow = true;
+          dirLight.shadow.mapSize.width = dirLight.shadow.mapSize.height = 2048;
+          scene.add(dirLight);
 
-      function enterLocked() {
-        phase = 'locked';
-        scanHintEl.classList.remove('visible');
-        surfaceLabelEl.classList.remove('visible');
-        gestureHintEl.classList.remove('visible');
-        confirmBtn.classList.remove('visible');
-        redoBtn.classList.add('visible');
-        enquireBtn.classList.add('visible');
-        onEnterLocked();
-      }
+          const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
+          fillLight.position.set(-3, 5, -4);
+          scene.add(fillLight);
 
-      confirmBtn.addEventListener('click', () => { if (phase === 'adjusting') enterLocked(); });
-      redoBtn.addEventListener('click',    () => { if (phase === 'locked')    enterAdjusting(); });
+          const planeGeo = new THREE.PlaneGeometry(2000, 2000);
+          planeGeo.rotateX(-Math.PI / 2);
+          shadowPlane = new THREE.Mesh(planeGeo, new THREE.ShadowMaterial({opacity: 0.4}));
+          shadowPlane.receiveShadow = true;
+          shadowPlane.visible = false;
+          scene.add(shadowPlane);
 
-      // ── Shared: build scene lighting + shadow plane ──────────────────────────
-      function buildScene(scene, renderer) {
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
-        // Do NOT override outputColorSpace — 8th Wall manages the renderer's color pipeline.
+          camera.position.set(0, 2, 2);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+          const draco = new DRACOLoader();
+          draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/libs/draco/gltf/');
+          const loader = new GLTFLoader();
+          loader.setDRACOLoader(draco);
+          loader.load('../models/Exterior.glb', (gltf) => {
+            model = gltf.scene;
+            model.scale.setScalar(0.05);
+            model.visible = false;
+            model.traverse(c => { if (c.isMesh) c.castShadow = c.receiveShadow = true; });
+            scene.add(model);
+          });
+        };
 
-        const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
-        dirLight.position.set(5, 10, 7);
-        dirLight.castShadow           = true;
-        dirLight.shadow.mapSize.width = dirLight.shadow.mapSize.height = 2048;
-        dirLight.shadow.camera.near   = 0.1;
-        dirLight.shadow.camera.far    = 200;
-        dirLight.shadow.camera.left   = dirLight.shadow.camera.bottom = -20;
-        dirLight.shadow.camera.right  = dirLight.shadow.camera.top    =  20;
-        scene.add(dirLight);
-
-        // Fill light from the opposite side so no face is completely dark
-        const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
-        fillLight.position.set(-3, 5, -4);
-        scene.add(fillLight);
-
-        const planeGeo = new THREE.PlaneGeometry(2000, 2000);
-        planeGeo.rotateX(-Math.PI / 2);
-        const shadowPlane = new THREE.Mesh(planeGeo, new THREE.ShadowMaterial({opacity: 0.5}));
-        shadowPlane.receiveShadow = true;
-        shadowPlane.visible       = false;
-        scene.add(shadowPlane);
-
-        return {shadowPlane};
-      }
-
-      // ── Shared: load the GLB ─────────────────────────────────────────────────
-      function loadModel(onLoaded) {
-        const draco = new DRACOLoader();
-        draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/libs/draco/gltf/');
-        const loader = new GLTFLoader();
-        loader.setDRACOLoader(draco);
-        modelLoadingEl.classList.add('visible');
-        loader.load('../models/Exterior.glb', (gltf) => {
-          modelLoadingEl.classList.remove('visible');
-          onLoaded(gltf.scene);
-        });
-      }
-
-      // ── Shared: reveal surface-found UI ─────────────────────────────────────
-      function showSurfaceReadyUI(hintText) {
-        scanHintEl.classList.remove('visible');
-        gestureHintEl.textContent = hintText;
-        gestureHintEl.classList.add('visible');
-        confirmBtn.classList.add('visible');
-        setTimeout(() => gestureHintEl.classList.add('fade'), 6000);
-      }
-
-      // ════════════════════════════════════════════════════════════════════════
-      // MODE A — Mobile: 8th Wall SLAM
-      // ════════════════════════════════════════════════════════════════════════
-      function initARMode() {
-        let arModel      = null;
-        let shadowPlane  = null;
-        let reticleGroup = null;
-        let anchorDisc   = null;
-        let rotY         = 0;
-        let modelScale   = 0.05;
-        let surfaceReady = false;
-        let lastLabelText = '';
-        let lastLabelTime = 0;
-        let lockedPosition = null; // world-space anchor saved on Phase 2 entry
-
-        // SLAM state — updated every frame from processCpuResult.reality
-        let slamStatus     = 'initializing';
-        let slamWorldPts   = 0;
-        let slamCamPos     = null;
-        let slamCamRot     = null;
-
-        // Returns true if the surface normal points within ~60° of straight up.
-        // If rotation is absent (no normal data), returns true rather than rejecting.
-        function isHorizontal(rotation) {
-          if (!rotation) return true;
-          const q = new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
-          return new THREE.Vector3(0, 1, 0).applyQuaternion(q).y > 0.5;
-        }
-
-        const scenePipelineModule = () => ({
+        return {
           name: 'initxrscene',
 
           onStart: ({canvas}) => {
             const {scene, camera, renderer} = XR8.Threejs.xrScene();
-            const shared = buildScene(scene, renderer);
-            shadowPlane  = shared.shadowPlane;
 
-            // ── Reticle group (much larger than the old 4 cm ring) ──────────
-            reticleGroup = new THREE.Group();
+            initXrScene({scene, camera, renderer});
 
-            // Large outer ring — 25 cm radius, clearly shows the surface level
-            const outerRingGeo = new THREE.RingGeometry(0.22, 0.27, 64);
-            outerRingGeo.rotateX(-Math.PI / 2);
-            reticleGroup.add(new THREE.Mesh(
-              outerRingGeo,
-              new THREE.MeshBasicMaterial({color: 0xffffff, opacity: 0.9, transparent: true, side: THREE.DoubleSide})
-            ));
-
-            // Semi-transparent fill disc inside the ring
-            const fillGeo = new THREE.CircleGeometry(0.22, 64);
-            fillGeo.rotateX(-Math.PI / 2);
-            reticleGroup.add(new THREE.Mesh(
-              fillGeo,
-              new THREE.MeshBasicMaterial({color: 0xffffff, opacity: 0.12, transparent: true, side: THREE.DoubleSide})
-            ));
-
-            // Four short crosshair lines at cardinal points
-            const crossMat = new THREE.MeshBasicMaterial({color: 0xffffff, opacity: 0.7, transparent: true});
-            [0, 1, 2, 3].forEach(i => {
-              const geo = new THREE.PlaneGeometry(0.06, 0.01);
-              geo.rotateX(-Math.PI / 2);
-              geo.rotateZ((i * Math.PI) / 2);
-              const mesh = new THREE.Mesh(geo, crossMat);
-              // offset outward from centre
-              mesh.position.set(
-                Math.cos((i * Math.PI) / 2) * 0.13,
-                0,
-                Math.sin((i * Math.PI) / 2) * 0.13
-              );
-              reticleGroup.add(mesh);
-            });
-
-            // Small centre dot
-            const dotGeo = new THREE.CircleGeometry(0.025, 32);
-            dotGeo.rotateX(-Math.PI / 2);
-            reticleGroup.add(new THREE.Mesh(
-              dotGeo,
-              new THREE.MeshBasicMaterial({color: 0xffffff, opacity: 0.85, transparent: true, side: THREE.DoubleSide})
-            ));
-
-            reticleGroup.visible = false;
-            scene.add(reticleGroup);
-
-            // ── Anchor disc — subtle marker shown under model in Phase 2 ────
-            const anchorGeo = new THREE.RingGeometry(0.18, 0.20, 64);
-            anchorGeo.rotateX(-Math.PI / 2);
-            anchorDisc = new THREE.Mesh(
-              anchorGeo,
-              new THREE.MeshBasicMaterial({color: 0xffffff, opacity: 0.35, transparent: true, side: THREE.DoubleSide})
-            );
-            anchorDisc.visible = false;
-            scene.add(anchorDisc);
-
-            // Initial pose hint for XrController (overridden immediately by SLAM)
-            camera.position.set(0, 2, 2);
+            canvas.addEventListener('touchmove', e => e.preventDefault(), {passive: false});
 
             XR8.XrController.updateCameraProjectionMatrix({
               origin: camera.position,
               facing: camera.quaternion,
             });
 
-            loadModel((model) => {
-              arModel = model;
-              arModel.scale.setScalar(modelScale);
-              arModel.visible = false;
-              arModel.traverse(c => { if (c.isMesh) c.castShadow = c.receiveShadow = true; });
-              scene.add(arModel);
-              enterAdjusting();
-            });
-
-            // Prevent browser scroll/zoom on canvas
-            canvas.addEventListener('touchmove', e => e.preventDefault(), {passive: false});
-
-            // Gestures — Phase 1 only
-            let prevTouches = null;
-
             canvas.addEventListener('touchstart', e => {
-              if (phase !== 'adjusting') return;
-              prevTouches = Array.from(e.touches).map(t => ({x: t.clientX, y: t.clientY}));
+              if (e.touches.length !== 1 || !model) return;
+              const t  = e.touches[0];
+              const nx = t.clientX / window.innerWidth;
+              const ny = t.clientY / window.innerHeight;
+              const hits = XR8.XrController.hitTest(nx, ny, ['FEATURE_POINT']);
+
+              const hit = hits.find(h => h.type === 'DETECTED_SURFACE'  && isHorizontal(h.rotation))
+                       || hits.find(h => h.type === 'ESTIMATED_SURFACE' && isHorizontal(h.rotation))
+                       || hits.find(h => h.type === 'DETECTED_SURFACE')
+                       || hits.find(h => h.type === 'ESTIMATED_SURFACE')
+                       || hits.find(h => h.type === 'FEATURE_POINT'     && isHorizontal(h.rotation));
+
+              if (!hit) return;
+
+              const {x, y, z} = hit.position;
+              model.position.set(x, y, z);
+              model.visible          = true;
+              shadowPlane.position.y = y;
+              shadowPlane.visible    = true;
+              document.getElementById('hint').style.display = 'none';
+              document.getElementById('enquire-btn').classList.add('visible');
             }, {passive: true});
-
-            canvas.addEventListener('touchmove', e => {
-              if (phase !== 'adjusting' || !arModel?.visible) return;
-              const curr = Array.from(e.touches).map(t => ({x: t.clientX, y: t.clientY}));
-              if (!prevTouches) { prevTouches = curr; return; }
-
-              if (curr.length === 1 && prevTouches.length === 1) {
-                rotY += (curr[0].x - prevTouches[0].x) * THREE.MathUtils.degToRad(0.5);
-                arModel.rotation.y = rotY;
-              } else if (curr.length === 2 && prevTouches.length >= 2) {
-                const pd = Math.hypot(prevTouches[0].x - prevTouches[1].x, prevTouches[0].y - prevTouches[1].y);
-                const cd = Math.hypot(curr[0].x - curr[1].x, curr[0].y - curr[1].y);
-                if (pd > 0) {
-                  modelScale = Math.max(0.005, Math.min(0.5, modelScale * (cd / pd)));
-                  arModel.scale.setScalar(modelScale);
-                }
-              }
-              prevTouches = curr;
-            }, {passive: true});
-
-            canvas.addEventListener('touchend', () => { prevTouches = null; }, {passive: true});
-
-            onEnterAdjusting = () => {
-              surfaceReady   = false;
-              lastLabelText  = '';
-              lockedPosition = null;
-              surfaceLabelEl.classList.remove('visible');
-              if (arModel)      arModel.visible      = false;
-              if (reticleGroup) reticleGroup.visible = false;
-              if (shadowPlane)  shadowPlane.visible  = false;
-              if (anchorDisc)   anchorDisc.visible   = false;
-            };
-
-            onEnterLocked = () => {
-              // Save the confirmed world position so we can re-apply it every frame
-              // and prevent SLAM world-recenter drift from moving the model.
-              lockedPosition = arModel ? arModel.position.clone() : null;
-
-              if (anchorDisc && arModel) {
-                anchorDisc.position.set(arModel.position.x, arModel.position.y + 0.003, arModel.position.z);
-                anchorDisc.visible = true;
-              }
-              if (reticleGroup) reticleGroup.visible = false;
-            };
           },
+        };
+      };
 
-          onUpdate: (frameData = {}) => {
-            // ── Capture SLAM tracking state ──────────────────────────────────
-            const processCpuResult = frameData.processCpuResult;
-
-            // Dump raw top-level keys of processCpuResult so we can see the real shape
-            const cpuKeys = processCpuResult ? Object.keys(processCpuResult).join(', ') : 'undefined';
-
-            const reality = processCpuResult?.reality;
-            if (reality) {
-              slamStatus   = reality.trackingStatus ?? 'unknown';
-              slamWorldPts = reality.worldPoints?.length ?? 0;
-              slamCamPos   = reality.position;
-            }
-
-            // Also check alternate paths some 8th Wall versions use
-            const altReality = processCpuResult?.slam ?? processCpuResult?.xr ?? processCpuResult?.world;
-            const altStatus  = altReality?.trackingStatus ?? altReality?.status ?? '—';
-
-            const slamLine = [
-              `cpu keys: [${cpuKeys}]`,
-              `SLAM: ${slamStatus} (alt:${altStatus}) | worldPts: ${slamWorldPts}`
-                + (slamCamPos ? ` | cam y: ${slamCamPos.y?.toFixed(3)}` : ' | cam: no pos'),
-            ];
-
-            if (!arModel) {
-              dbg([...slamLine, 'phase: ' + phase, 'arModel: not loaded yet']);
-              return;
-            }
-
-            if (phase !== 'adjusting') {
-              // Re-apply the saved world position every frame to counteract SLAM drift
-              // and any accidental position mutations.
-              if (lockedPosition) {
-                const drift = arModel.position.distanceTo(lockedPosition);
-                arModel.position.copy(lockedPosition);
-                dbg([
-                  ...slamLine,
-                  'phase: LOCKED',
-                  `anchor @ (${lockedPosition.x.toFixed(3)}, ${lockedPosition.y.toFixed(3)}, ${lockedPosition.z.toFixed(3)})`,
-                  `SLAM drift this frame: ${(drift * 100).toFixed(1)} cm`,
-                ]);
-              } else {
-                dbg([...slamLine, 'phase: LOCKED', 'anchor: none (model not placed)']);
-              }
-              return;
-            }
-
-            // Include FEATURE_POINT in results — when SLAM hasn't built up enough map
-            // for a full surface plane, feature points are the only hits returned.
-            // We accept them as a last resort only when their normal is horizontal.
-            const hits = XR8.XrController.hitTest(0.5, 0.5, ['FEATURE_POINT']);
-
-            // Build debug lines for every raw hit
-            const camY = slamCamPos?.y ?? null;
-            // A surface should be at or below the camera (tables, floor).
-            // Reject anything more than 15 cm above the camera — that's a ceiling or
-            // wall feature point, not something the user is trying to place on.
-            const belowCam = (h) => camY === null || h.position.y < camY + 0.15;
-
-            const lines = [
-              `phase: adjusting  |  raw hits: ${hits.length}`,
-              `cam y: ${camY !== null ? camY.toFixed(3) : 'unknown'}  (below-cam threshold: ${camY !== null ? (camY + 0.15).toFixed(3) : 'n/a'})`,
-            ];
-            hits.forEach((h, i) => {
-              let normalY = 'n/a';
-              let horizFlag = '?';
-              if (h.rotation) {
-                const q = new THREE.Quaternion(h.rotation.x, h.rotation.y, h.rotation.z, h.rotation.w);
-                const ny = new THREE.Vector3(0, 1, 0).applyQuaternion(q).y;
-                normalY   = ny.toFixed(3);
-                horizFlag = ny > 0.5 ? '✓ horiz' : '✗ NOT horiz';
-              } else {
-                horizFlag = '(no rotation → accepted)';
-              }
-              const camCheck = belowCam(h) ? '✓ below cam' : '✗ ABOVE CAM';
-              lines.push(`[${i}] ${h.type}`);
-              lines.push(`     y=${h.position.y.toFixed(3)}  normal.y=${normalY}  ${horizFlag}  ${camCheck}`);
-            });
-
-            // Priority:
-            //   1. DETECTED_SURFACE  (confirmed plane — horizontal + below camera)
-            //   2. ESTIMATED_SURFACE (estimated plane — horizontal + below camera)
-            //   3. DETECTED/ESTIMATED without rotation data but below camera
-            //   4. FEATURE_POINT     (last resort — horizontal normal AND below camera)
-            const hit = hits.find(h => h.type === 'DETECTED_SURFACE'  && isHorizontal(h.rotation) && belowCam(h))
-                     || hits.find(h => h.type === 'ESTIMATED_SURFACE' && isHorizontal(h.rotation) && belowCam(h))
-                     || hits.find(h => h.type === 'DETECTED_SURFACE'  && belowCam(h))
-                     || hits.find(h => h.type === 'ESTIMATED_SURFACE' && belowCam(h))
-                     || hits.find(h => h.type === 'FEATURE_POINT'     && isHorizontal(h.rotation) && belowCam(h));
-
-            if (!hit) {
-              lines.push('→ SELECTED: none — waiting for surface');
-              dbg([...lines, ...slamLine]);
-              reticleGroup.visible = false;
-              return;
-            }
-
-            const fallbackNote = hit.type === 'FEATURE_POINT' ? ' (fallback)' : '';
-            lines.push(`→ SELECTED: ${hit.type}${fallbackNote} @ y=${hit.position.y.toFixed(3)}`);
-
-            const {position} = hit;
-            const target = new THREE.Vector3(position.x, position.y, position.z);
-
-            if (!arModel.visible) {
-              arModel.position.copy(target);
-            } else {
-              arModel.position.lerp(target, 0.12);
-            }
-
-            arModel.visible        = true;
-            shadowPlane.position.y = arModel.position.y;
-            shadowPlane.visible    = true;
-
-            reticleGroup.position.set(arModel.position.x, arModel.position.y + 0.003, arModel.position.z);
-            reticleGroup.visible = true;
-            reticleGroup.scale.setScalar(0.92 + 0.08 * Math.sin(Date.now() * 0.003));
-
-            lines.push(`model @ (${arModel.position.x.toFixed(2)}, ${arModel.position.y.toFixed(2)}, ${arModel.position.z.toFixed(2)})`);
-            lines.push(...slamLine);
-
-            // Update surface label at most every 500 ms
-            const now = Date.now();
-            const label = arModel.position.y > 0.2
-              ? `Elevated surface (~${(arModel.position.y * 100).toFixed(0)} cm high)`
-              : 'Ground level surface';
-            if (label !== lastLabelText && now - lastLabelTime > 500) {
-              lastLabelText = label;
-              lastLabelTime = now;
-              surfaceLabelEl.textContent = label;
-            }
-
-            if (!surfaceReady) {
-              surfaceReady = true;
-              surfaceLabelEl.classList.add('visible');
-              showSurfaceReadyUI('1 finger: rotate  |  Pinch: scale');
-            }
-
-            dbg(lines);
-          },
-        });
-
+      const onxrloaded = () => {
         XR8.XrController.configure({enableWorldPoints: true});
 
         XR8.addCameraPipelineModules([
@@ -779,161 +269,32 @@
           XRExtras.FullWindowCanvas.pipelineModule(),
           XRExtras.Loading.pipelineModule(),
           XRExtras.RuntimeError.pipelineModule(),
-          scenePipelineModule(),
+          initScenePipelineModule(),
         ]);
 
         XR8.run({canvas: document.getElementById('camerafeed')});
-      }
+      };
 
-      // ════════════════════════════════════════════════════════════════════════
-      // MODE B — Desktop: webcam + OrbitControls preview
-      // ════════════════════════════════════════════════════════════════════════
-      async function initDesktopMode() {
-        desktopBadge.classList.add('visible');
-
-        // Webcam feed behind the transparent canvas
-        const video = document.getElementById('desktop-video');
-        video.style.display = 'block';
-        try {
-          video.srcObject = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'user'}, audio: false});
-        } catch (_) { /* no webcam available — black background fallback */ }
-
-        const canvas   = document.getElementById('camerafeed');
-        const renderer = new THREE.WebGLRenderer({canvas, alpha: true, antialias: true});
-        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-        renderer.setSize(innerWidth, innerHeight);
-
-        const scene  = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.01, 1000);
-        camera.position.set(0, 1.5, 5);
-
-        const {shadowPlane} = buildScene(scene, renderer);
-        shadowPlane.position.y = -1;
-        shadowPlane.visible    = true;
-
-        // OrbitControls — disabled in Phase 1 (model adjustment), enabled in Phase 2
-        const controls = new OrbitControls(camera, canvas);
-        controls.target.set(0, 0, 0);
-        controls.enableDamping = true;
-        controls.enabled       = false;
-
-        onEnterLocked    = () => { controls.enabled = true; };
-        onEnterAdjusting = () => { controls.enabled = false; };
-
-        window.addEventListener('resize', () => {
-          camera.aspect = innerWidth / innerHeight;
-          camera.updateProjectionMatrix();
-          renderer.setSize(innerWidth, innerHeight);
-        });
-
-        let arModel    = null;
-        let rotY       = 0;
-        let modelScale = 0.05;
-
-        loadModel((model) => {
-          arModel = model;
-          arModel.scale.setScalar(modelScale);
-          arModel.position.set(0, -1, 0); // sit on the shadow plane
-          arModel.traverse(c => { if (c.isMesh) c.castShadow = c.receiveShadow = true; });
-          scene.add(arModel);
-
-          enterAdjusting();
-          scanHintEl.classList.remove('visible'); // no surface scanning on desktop
-          showSurfaceReadyUI('Drag: rotate  |  Scroll: scale');
-        });
-
-        // Phase 1 mouse gestures
-        let dragging = false, lastX = 0;
-
-        canvas.addEventListener('mousedown', e => {
-          if (phase !== 'adjusting') return;
-          dragging = true;
-          lastX    = e.clientX;
-        });
-        window.addEventListener('mousemove', e => {
-          if (!dragging || phase !== 'adjusting' || !arModel) return;
-          rotY += (e.clientX - lastX) * THREE.MathUtils.degToRad(0.4);
-          arModel.rotation.y = rotY;
-          lastX = e.clientX;
-        });
-        window.addEventListener('mouseup', () => { dragging = false; });
-
-        canvas.addEventListener('wheel', e => {
-          if (phase !== 'adjusting' || !arModel) return;
-          e.preventDefault();
-          modelScale = Math.max(0.005, Math.min(0.5, modelScale * (e.deltaY < 0 ? 1.06 : 0.94)));
-          arModel.scale.setScalar(modelScale);
-        }, {passive: false});
-
-        // Mobile pinch on desktop (touch-screen laptops)
-        let prevTouches = null;
-        canvas.addEventListener('touchstart', e => {
-          if (phase !== 'adjusting') return;
-          prevTouches = Array.from(e.touches).map(t => ({x: t.clientX, y: t.clientY}));
-        }, {passive: true});
-        canvas.addEventListener('touchmove', e => {
-          if (phase !== 'adjusting' || !arModel) return;
-          const curr = Array.from(e.touches).map(t => ({x: t.clientX, y: t.clientY}));
-          if (!prevTouches) { prevTouches = curr; return; }
-          if (curr.length === 1 && prevTouches.length === 1) {
-            rotY += (curr[0].x - prevTouches[0].x) * THREE.MathUtils.degToRad(0.5);
-            arModel.rotation.y = rotY;
-          } else if (curr.length === 2 && prevTouches.length >= 2) {
-            const pd = Math.hypot(prevTouches[0].x - prevTouches[1].x, prevTouches[0].y - prevTouches[1].y);
-            const cd = Math.hypot(curr[0].x - curr[1].x, curr[0].y - curr[1].y);
-            if (pd > 0) {
-              modelScale = Math.max(0.005, Math.min(0.5, modelScale * (cd / pd)));
-              arModel.scale.setScalar(modelScale);
-            }
-          }
-          prevTouches = curr;
-        }, {passive: true});
-        canvas.addEventListener('touchend', () => { prevTouches = null; }, {passive: true});
-
-        (function animate() {
-          requestAnimationFrame(animate);
-          if (controls.enabled) controls.update();
-          renderer.render(scene, camera);
-          dbg([
-            'mode: DESKTOP PREVIEW',
-            'phase: ' + phase,
-            arModel ? `model @ (${arModel.position.x.toFixed(2)}, ${arModel.position.y.toFixed(2)}, ${arModel.position.z.toFixed(2)})` : 'model: loading',
-            `orbitControls: ${controls.enabled ? 'enabled' : 'disabled'}`,
-          ]);
-        })();
-      }
-
-      // ── Route to the right mode ──────────────────────────────────────────────
-      const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
-      if (isMobile) {
-        // Wait for 8th Wall to signal it's ready, then start the pipeline
-        const onxrloaded = () => initARMode();
-        window.XR8
-          ? onxrloaded()
-          : window.addEventListener('xrloaded', onxrloaded);
-      } else {
-        initDesktopMode();
-      }
+      window.XR8 ? onxrloaded() : window.addEventListener('xrloaded', onxrloaded);
 
       // ── Enquiry form ─────────────────────────────────────────────────────────
+      const enquireBtn   = document.getElementById('enquire-btn');
       const sheetOverlay = document.getElementById('sheet-overlay');
       const sheet        = document.getElementById('enquiry-sheet');
       const formContent  = document.getElementById('form-content');
       const thankYou     = document.getElementById('thank-you');
       const enquiryForm  = document.getElementById('enquiry-form');
+      const nameInput    = document.getElementById('field-name');
+      const phoneInput   = document.getElementById('field-phone');
+      const emailInput   = document.getElementById('field-email');
+      const nameWrap     = document.getElementById('field-name-wrap');
+      const phoneWrap    = document.getElementById('field-phone-wrap');
+      const emailWrap    = document.getElementById('field-email-wrap');
 
-      const nameInput  = document.getElementById('field-name');
-      const phoneInput = document.getElementById('field-phone');
-      const emailInput = document.getElementById('field-email');
-      const nameWrap   = document.getElementById('field-name-wrap');
-      const phoneWrap  = document.getElementById('field-phone-wrap');
-      const emailWrap  = document.getElementById('field-email-wrap');
-
-      const setError     = (w, v) => w.classList.toggle('error', v);
-      const validName    = ()  => nameInput.value.trim().length > 0;
-      const validPhone   = ()  => /^[+\d][\d\s\-().]{6,}$/.test(phoneInput.value.trim());
-      const validEmail   = ()  => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value.trim());
+      const setError   = (w, v) => w.classList.toggle('error', v);
+      const validName  = () => nameInput.value.trim().length > 0;
+      const validPhone = () => /^[+\d][\d\s\-().]{6,}$/.test(phoneInput.value.trim());
+      const validEmail = () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value.trim());
 
       nameInput.addEventListener('input',  () => { if (validName())  setError(nameWrap,  false); });
       phoneInput.addEventListener('input', () => { if (validPhone()) setError(phoneWrap, false); });
