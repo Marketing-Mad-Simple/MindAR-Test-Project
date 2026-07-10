@@ -623,27 +623,38 @@
             };
           },
 
-          onUpdate: ({processCpuResult} = {}) => {
+          onUpdate: (frameData = {}) => {
             // ── Capture SLAM tracking state ──────────────────────────────────
+            const processCpuResult = frameData.processCpuResult;
+
+            // Dump raw top-level keys of processCpuResult so we can see the real shape
+            const cpuKeys = processCpuResult ? Object.keys(processCpuResult).join(', ') : 'undefined';
+
             const reality = processCpuResult?.reality;
             if (reality) {
               slamStatus   = reality.trackingStatus ?? 'unknown';
               slamWorldPts = reality.worldPoints?.length ?? 0;
               slamCamPos   = reality.position;
-              slamCamRot   = reality.rotation;
             }
 
-            const slamLine = `SLAM: ${slamStatus} | worldPts: ${slamWorldPts}`
-              + (slamCamPos ? ` | cam y: ${slamCamPos.y?.toFixed(3) ?? '?'}` : ' | cam: no pos');
+            // Also check alternate paths some 8th Wall versions use
+            const altReality = processCpuResult?.slam ?? processCpuResult?.xr ?? processCpuResult?.world;
+            const altStatus  = altReality?.trackingStatus ?? altReality?.status ?? '—';
+
+            const slamLine = [
+              `cpu keys: [${cpuKeys}]`,
+              `SLAM: ${slamStatus} (alt:${altStatus}) | worldPts: ${slamWorldPts}`
+                + (slamCamPos ? ` | cam y: ${slamCamPos.y?.toFixed(3)}` : ' | cam: no pos'),
+            ];
 
             if (!arModel) {
-              dbg([slamLine, 'phase: ' + phase, 'arModel: not loaded yet']);
+              dbg([...slamLine, 'phase: ' + phase, 'arModel: not loaded yet']);
               return;
             }
 
             if (phase !== 'adjusting') {
               dbg([
-                slamLine,
+                ...slamLine,
                 'phase: LOCKED',
                 `model @ (${arModel.position.x.toFixed(3)}, ${arModel.position.y.toFixed(3)}, ${arModel.position.z.toFixed(3)})`,
                 'hitTest: paused (model is placed)',
@@ -686,9 +697,8 @@
 
             if (!hit) {
               lines.push('→ SELECTED: none — waiting for surface');
-              lines.push(slamLine);
+              dbg([...lines, ...slamLine]);
               reticleGroup.visible = false;
-              dbg(lines);
               return;
             }
 
@@ -713,7 +723,7 @@
             reticleGroup.scale.setScalar(0.92 + 0.08 * Math.sin(Date.now() * 0.003));
 
             lines.push(`model @ (${arModel.position.x.toFixed(2)}, ${arModel.position.y.toFixed(2)}, ${arModel.position.z.toFixed(2)})`);
-            lines.push(slamLine);
+            lines.push(...slamLine);
 
             // Update surface label at most every 500 ms
             const now = Date.now();
