@@ -210,16 +210,32 @@
 
       // ── AR lifecycle ──────────────────────────────────────────────────────
       function showAR() {
-        loading.style.transition = 'opacity 0.4s ease';
-        loading.style.opacity    = '0';
-        setTimeout(() => { loading.style.display = 'none'; }, 400);
-        hint.style.display     = 'block';
-        logoWrap.style.display = 'flex';
-        requestAnimationFrame(() => { logoWrap.style.opacity = '1'; });
-        // Start buffering immediately — muted autoplay is allowed without gesture.
-        // Video plays silently in the background so first frame is ready on targetFound.
-        console.log('AR: arReady — starting background muted play, readyState=' + videoEl.readyState);
-        videoEl.play().then(() => console.log('AR: background play() started')).catch((e) => console.warn('AR: background play() failed — ' + e));
+        // WKWebView (WhatsApp/Instagram in-app browser) blocks play() without a real tap.
+        // Transform the loading screen into a "Tap to Begin" prompt so the user's tap
+        // becomes the user gesture that unlocks video playback.
+        console.log('AR: arReady — showing tap-to-begin, readyState=' + videoEl.readyState);
+        loading.querySelector('.spinner').style.display = 'none';
+        const p = loading.querySelector('p');
+        p.textContent = 'TAP TO BEGIN';
+        p.style.color = '#fff';
+        p.style.fontSize = '1rem';
+        p.style.letterSpacing = '3px';
+        loading.style.cursor = 'pointer';
+
+        loading.addEventListener('click', function onTap() {
+          loading.removeEventListener('click', onTap);
+          loading.style.transition = 'opacity 0.4s ease';
+          loading.style.opacity    = '0';
+          setTimeout(() => { loading.style.display = 'none'; }, 400);
+          hint.style.display     = 'block';
+          logoWrap.style.display = 'flex';
+          requestAnimationFrame(() => { logoWrap.style.opacity = '1'; });
+          // This runs inside a user gesture — play() will be allowed on all browsers.
+          console.log('User tapped — calling play(), readyState=' + videoEl.readyState);
+          videoEl.play()
+            .then(() => console.log('AR: background play() started after tap'))
+            .catch((e) => console.warn('AR: play() failed even after tap — ' + e));
+        });
       }
 
       sceneEl.addEventListener('arReady', () => { console.log('AR: arReady'); showAR(); });
