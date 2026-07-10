@@ -55,15 +55,15 @@
     </div>
 
     <a-scene
-          mindar-image="imageTargetSrc: ../targets.mind; filterMinCF: 0.001; filterBeta: 0.01;"
+          mindar-image="imageTargetSrc: targets.mind; filterMinCF: 0.001; filterBeta: 0.01;"
           gltf-model="dracoDecoderPath: https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/libs/draco/gltf/"
           color-space="sRGB"
           renderer="colorManagement: true, physicallyCorrectLights"
           vr-mode-ui="enabled: false"
           device-orientation-permission-ui="enabled: false">
       <a-assets id="assets" timeout="60000">
-        <a-asset-item id="interiorModel" src="../models/Interior_Optim.glb"></a-asset-item>
-        <a-asset-item id="exteriorModel" src="../models/Exterior.glb"></a-asset-item>
+        <a-asset-item id="interiorModel" src="models/Interior_Optim.glb"></a-asset-item>
+        <a-asset-item id="exteriorModel" src="models/Exterior.glb"></a-asset-item>
       </a-assets>
 
       <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
