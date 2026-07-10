@@ -134,6 +134,19 @@
       }
       #enquire-btn.visible { display: block; }
 
+      /* ── Surface label (phase 1 — shows which surface is detected) ─ */
+      #surface-label {
+        top: calc(38% + 44px);
+        font-size: 0.78rem;
+        padding: 7px 16px;
+        display: none;
+        background: rgba(255,255,255,0.12);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #ddd;
+        letter-spacing: 0.3px;
+      }
+      #surface-label.visible { display: block; }
+
       /* ── Desktop preview badge ──────────────────────────────────── */
       #desktop-badge {
         position: fixed;
@@ -223,6 +236,7 @@
 
     <div id="model-loading" class="pill">Loading model&hellip;</div>
     <div id="scan-hint"    class="pill">Aim at a flat surface</div>
+    <div id="surface-label" class="pill"></div>
     <div id="gesture-hint" class="pill"></div>
     <div id="desktop-badge">DESKTOP PREVIEW</div>
 
@@ -286,6 +300,7 @@
       // ── UI refs ─────────────────────────────────────────────────────────────
       const modelLoadingEl = document.getElementById('model-loading');
       const scanHintEl     = document.getElementById('scan-hint');
+      const surfaceLabelEl = document.getElementById('surface-label');
       const gestureHintEl  = document.getElementById('gesture-hint');
       const desktopBadge   = document.getElementById('desktop-badge');
       const confirmBtn     = document.getElementById('confirm-btn');
@@ -302,6 +317,7 @@
       function enterAdjusting() {
         phase = 'adjusting';
         scanHintEl.classList.add('visible');
+        surfaceLabelEl.classList.remove('visible');
         gestureHintEl.classList.remove('visible', 'fade');
         confirmBtn.classList.remove('visible');
         redoBtn.classList.remove('visible');
@@ -312,6 +328,7 @@
       function enterLocked() {
         phase = 'locked';
         scanHintEl.classList.remove('visible');
+        surfaceLabelEl.classList.remove('visible');
         gestureHintEl.classList.remove('visible');
         confirmBtn.classList.remove('visible');
         redoBtn.classList.add('visible');
@@ -376,12 +393,18 @@
       // MODE A — Mobile: 8th Wall SLAM
       // ════════════════════════════════════════════════════════════════════════
       function initARMode() {
-        let arModel     = null;
-        let shadowPlane = null;
-        let reticle     = null;
-        let rotY        = 0;
-        let modelScale  = 0.05;
-        let surfaceReady = false; // true once hitTest returns a result for the first time
+        let arModel      = null;
+        let shadowPlane  = null;
+        let reticleGroup = null;
+        let anchorDisc   = null; // shown under the model after Phase 2 confirmation
+        let rotY         = 0;
+        let modelScale   = 0.05;
+        let surfaceReady = false;
+
+        // Once the first surface is detected we lock onto its y-band (±15 cm).
+        // This prevents hitTest from jumping between the table and the floor.
+        let bandY        = null;
+        const Y_BAND     = 0.15;
 
         const scenePipelineModule = () => ({
           name: 'initxrscene',
@@ -391,15 +414,61 @@
             const shared = buildScene(scene, renderer);
             shadowPlane  = shared.shadowPlane;
 
-            // Reticle ring — marks detected surface while scanning
-            const ringGeo = new THREE.RingGeometry(0.04, 0.07, 32);
-            ringGeo.rotateX(-Math.PI / 2);
-            reticle = new THREE.Mesh(
-              ringGeo,
+            // ── Reticle group (much larger than the old 4 cm ring) ──────────
+            reticleGroup = new THREE.Group();
+
+            // Large outer ring — 25 cm radius, clearly shows the surface level
+            const outerRingGeo = new THREE.RingGeometry(0.22, 0.27, 64);
+            outerRingGeo.rotateX(-Math.PI / 2);
+            reticleGroup.add(new THREE.Mesh(
+              outerRingGeo,
+              new THREE.MeshBasicMaterial({color: 0xffffff, opacity: 0.9, transparent: true, side: THREE.DoubleSide})
+            ));
+
+            // Semi-transparent fill disc inside the ring
+            const fillGeo = new THREE.CircleGeometry(0.22, 64);
+            fillGeo.rotateX(-Math.PI / 2);
+            reticleGroup.add(new THREE.Mesh(
+              fillGeo,
+              new THREE.MeshBasicMaterial({color: 0xffffff, opacity: 0.12, transparent: true, side: THREE.DoubleSide})
+            ));
+
+            // Four short crosshair lines at cardinal points
+            const crossMat = new THREE.MeshBasicMaterial({color: 0xffffff, opacity: 0.7, transparent: true});
+            [0, 1, 2, 3].forEach(i => {
+              const geo = new THREE.PlaneGeometry(0.06, 0.01);
+              geo.rotateX(-Math.PI / 2);
+              geo.rotateZ((i * Math.PI) / 2);
+              const mesh = new THREE.Mesh(geo, crossMat);
+              // offset outward from centre
+              mesh.position.set(
+                Math.cos((i * Math.PI) / 2) * 0.13,
+                0,
+                Math.sin((i * Math.PI) / 2) * 0.13
+              );
+              reticleGroup.add(mesh);
+            });
+
+            // Small centre dot
+            const dotGeo = new THREE.CircleGeometry(0.025, 32);
+            dotGeo.rotateX(-Math.PI / 2);
+            reticleGroup.add(new THREE.Mesh(
+              dotGeo,
               new THREE.MeshBasicMaterial({color: 0xffffff, opacity: 0.85, transparent: true, side: THREE.DoubleSide})
+            ));
+
+            reticleGroup.visible = false;
+            scene.add(reticleGroup);
+
+            // ── Anchor disc — subtle marker shown under model in Phase 2 ────
+            const anchorGeo = new THREE.RingGeometry(0.18, 0.20, 64);
+            anchorGeo.rotateX(-Math.PI / 2);
+            anchorDisc = new THREE.Mesh(
+              anchorGeo,
+              new THREE.MeshBasicMaterial({color: 0xffffff, opacity: 0.35, transparent: true, side: THREE.DoubleSide})
             );
-            reticle.visible = false;
-            scene.add(reticle);
+            anchorDisc.visible = false;
+            scene.add(anchorDisc);
 
             // Initial pose hint for XrController (overridden immediately by SLAM)
             camera.position.set(0, 2, 2);
@@ -450,50 +519,74 @@
 
             canvas.addEventListener('touchend', () => { prevTouches = null; }, {passive: true});
 
-            // On redo: reset surfaceReady so the scan hint returns and UI resets
             onEnterAdjusting = () => {
               surfaceReady = false;
-              if (arModel) arModel.visible = false;
-              if (reticle)  reticle.visible  = false;
-              if (shadowPlane) shadowPlane.visible = false;
+              bandY        = null; // clear the Y-band so next scan can detect any surface
+              if (arModel)      arModel.visible      = false;
+              if (reticleGroup) reticleGroup.visible = false;
+              if (shadowPlane)  shadowPlane.visible  = false;
+              if (anchorDisc)   anchorDisc.visible   = false;
+            };
+
+            onEnterLocked = () => {
+              // Show the anchor disc at the confirmed surface position
+              if (anchorDisc && arModel) {
+                anchorDisc.position.set(arModel.position.x, arModel.position.y + 0.003, arModel.position.z);
+                anchorDisc.visible = true;
+              }
+              if (reticleGroup) reticleGroup.visible = false;
             };
           },
 
-          // onUpdate fires each frame after SLAM CPU processing is complete.
-          // While in 'adjusting' phase, track the centre-screen detected surface.
-          // Once 'locked', do nothing — SLAM keeps the model world-anchored.
           onUpdate: () => {
             if (!arModel || phase !== 'adjusting') return;
 
-            // Per the 8th Wall API docs, includedTypes only accepts 'FEATURE_POINT'.
-            // Call hitTest with no filter to get ALL types, then pick the best result.
+            // Per docs, includedTypes only accepts 'FEATURE_POINT'.
+            // Filter results by type priority after the call.
             const hits = XR8.XrController.hitTest(0.5, 0.5, ['FEATURE_POINT']);
             const hit  = hits.find(h => h.type === 'DETECTED_SURFACE')
                       || hits.find(h => h.type === 'ESTIMATED_SURFACE')
                       || hits[0];
 
-            if (hit) {
-              const {position} = hit;
+            if (!hit) {
+              reticleGroup.visible = false;
+              return;
+            }
 
-              arModel.position.set(position.x, position.y, position.z);
-              arModel.visible         = true;
-              shadowPlane.position.y  = position.y;
-              shadowPlane.visible     = true;
-              reticle.position.set(position.x, position.y + 0.002, position.z);
-              reticle.visible         = true;
+            const {position} = hit;
 
-              if (!surfaceReady) {
-                surfaceReady = true;
-                showSurfaceReadyUI('1 finger: rotate  |  Pinch: scale');
-              }
-            } else {
-              reticle.visible = false;
+            // Y-band filter: once we've locked onto a surface level (table vs floor),
+            // ignore hits that jump more than 15 cm away in Y. This prevents the model
+            // from suddenly snapping from the table down to the floor mid-scan.
+            if (bandY !== null && Math.abs(position.y - bandY) > Y_BAND) {
+              // Out-of-band hit — keep reticle at last valid position, don't move model
+              return;
+            }
+            if (bandY === null) bandY = position.y;
+            // Allow the band to slowly drift with the detected surface
+            bandY += (position.y - bandY) * 0.05;
+
+            arModel.position.set(position.x, position.y, position.z);
+            arModel.visible        = true;
+            shadowPlane.position.y = position.y;
+            shadowPlane.visible    = true;
+
+            reticleGroup.position.set(position.x, position.y + 0.003, position.z);
+            reticleGroup.visible = true;
+            // Slow pulse on the reticle outer scale
+            reticleGroup.scale.setScalar(0.92 + 0.08 * Math.sin(Date.now() * 0.003));
+
+            if (!surfaceReady) {
+              surfaceReady = true;
+              // Tell the user what kind of surface was found
+              const label = position.y > 0.2 ? `Elevated surface (~${(position.y * 100).toFixed(0)} cm high)` : 'Ground level surface';
+              surfaceLabelEl.textContent = label;
+              surfaceLabelEl.classList.add('visible');
+              showSurfaceReadyUI('1 finger: rotate  |  Pinch: scale');
             }
           },
         });
 
-        // Configure XrController before run() — enables denser world point data
-        // which gives hitTest more surface candidates to work with.
         XR8.XrController.configure({enableWorldPoints: true});
 
         XR8.addCameraPipelineModules([
