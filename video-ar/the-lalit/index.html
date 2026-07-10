@@ -4,6 +4,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>The Lalit — AR Experience</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
     <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
     <style>
@@ -143,9 +144,9 @@
       device-orientation-permission-ui="enabled: false">
 
       <a-assets timeout="10000">
-        <video id="ar-video" src="video.mp4"
+        <video id="ar-video"
           loop muted playsinline webkit-playsinline
-          crossorigin="anonymous" preload="auto">
+          crossorigin="anonymous">
         </video>
       </a-assets>
 
@@ -172,8 +173,18 @@
     </a-scene>
 
     <script>
+      // ── HLS setup — starts buffering immediately so first frame is ready fast ─
+      const videoEl = document.getElementById('ar-video');
+      if (Hls.isSupported()) {
+        const hls = new Hls({ startFragPrefetch: true });
+        hls.loadSource('hls/playlist.m3u8');
+        hls.attachMedia(videoEl);
+      } else {
+        // iOS Safari — native HLS
+        videoEl.src = 'hls/playlist.m3u8';
+      }
+
       const sceneEl    = document.querySelector('a-scene');
-      const videoEl    = document.getElementById('ar-video');
       const videoPanel = document.getElementById('ar-video-panel');
       const loading    = document.getElementById('loading-screen');
       const hint       = document.getElementById('hint');
