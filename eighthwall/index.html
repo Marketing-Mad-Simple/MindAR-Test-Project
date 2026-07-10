@@ -343,11 +343,11 @@
       function buildScene(scene, renderer) {
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
-        renderer.outputColorSpace  = THREE.SRGBColorSpace;
+        // Do NOT override outputColorSpace — 8th Wall manages the renderer's color pipeline.
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        scene.add(new THREE.AmbientLight(0xffffff, 1.2));
 
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
         dirLight.position.set(5, 10, 7);
         dirLight.castShadow           = true;
         dirLight.shadow.mapSize.width = dirLight.shadow.mapSize.height = 2048;
@@ -356,6 +356,11 @@
         dirLight.shadow.camera.left   = dirLight.shadow.camera.bottom = -20;
         dirLight.shadow.camera.right  = dirLight.shadow.camera.top    =  20;
         scene.add(dirLight);
+
+        // Fill light from the opposite side so no face is completely dark
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        fillLight.position.set(-3, 5, -4);
+        scene.add(fillLight);
 
         const planeGeo = new THREE.PlaneGeometry(2000, 2000);
         planeGeo.rotateX(-Math.PI / 2);
@@ -396,15 +401,21 @@
         let arModel      = null;
         let shadowPlane  = null;
         let reticleGroup = null;
-        let anchorDisc   = null; // shown under the model after Phase 2 confirmation
+        let anchorDisc   = null;
         let rotY         = 0;
         let modelScale   = 0.05;
         let surfaceReady = false;
+        let lastLabelText = '';
+        let lastLabelTime = 0;
 
-        // Once the first surface is detected we lock onto its y-band (±15 cm).
-        // This prevents hitTest from jumping between the table and the floor.
-        let bandY        = null;
-        const Y_BAND     = 0.15;
+        // Returns true only if the hit surface normal points roughly upward.
+        // Rejects vertical walls, ceilings, and "air" estimated surfaces.
+        function isHorizontal(rotation) {
+          if (!rotation) return false;
+          const q = new THREE.Quaternion(rotation.x, rotation.y, rotation.z, rotation.w);
+          const normal = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+          return normal.y > 0.7; // within ~45° of straight up
+        }
 
         const scenePipelineModule = () => ({
           name: 'initxrscene',
@@ -520,8 +531,9 @@
             canvas.addEventListener('touchend', () => { prevTouches = null; }, {passive: true});
 
             onEnterAdjusting = () => {
-              surfaceReady = false;
-              bandY        = null; // clear the Y-band so next scan can detect any surface
+              surfaceReady  = false;
+              lastLabelText = '';
+              surfaceLabelEl.classList.remove('visible');
               if (arModel)      arModel.visible      = false;
               if (reticleGroup) reticleGroup.visible = false;
               if (shadowPlane)  shadowPlane.visible  = false;
@@ -541,12 +553,15 @@
           onUpdate: () => {
             if (!arModel || phase !== 'adjusting') return;
 
-            // Per docs, includedTypes only accepts 'FEATURE_POINT'.
-            // Filter results by type priority after the call.
             const hits = XR8.XrController.hitTest(0.5, 0.5, ['FEATURE_POINT']);
-            const hit  = hits.find(h => h.type === 'DETECTED_SURFACE')
-                      || hits.find(h => h.type === 'ESTIMATED_SURFACE')
-                      || hits[0];
+
+            // Only accept hits on roughly-horizontal surfaces.
+            // This rejects vertical walls, ceilings, and "air" estimated surfaces.
+            const flatHits = hits.filter(h => isHorizontal(h.rotation));
+
+            // Prefer a firmly-detected plane; fall back to an estimated one.
+            const hit = flatHits.find(h => h.type === 'DETECTED_SURFACE')
+                     || flatHits.find(h => h.type === 'ESTIMATED_SURFACE');
 
             if (!hit) {
               reticleGroup.visible = false;
@@ -554,33 +569,35 @@
             }
 
             const {position} = hit;
+            const target = new THREE.Vector3(position.x, position.y, position.z);
 
-            // Y-band filter: once we've locked onto a surface level (table vs floor),
-            // ignore hits that jump more than 15 cm away in Y. This prevents the model
-            // from suddenly snapping from the table down to the floor mid-scan.
-            if (bandY !== null && Math.abs(position.y - bandY) > Y_BAND) {
-              // Out-of-band hit — keep reticle at last valid position, don't move model
-              return;
+            if (!arModel.visible) {
+              arModel.position.copy(target); // snap on first valid hit
+            } else {
+              arModel.position.lerp(target, 0.12); // smooth tracking thereafter
             }
-            if (bandY === null) bandY = position.y;
-            // Allow the band to slowly drift with the detected surface
-            bandY += (position.y - bandY) * 0.05;
 
-            arModel.position.set(position.x, position.y, position.z);
             arModel.visible        = true;
-            shadowPlane.position.y = position.y;
+            shadowPlane.position.y = arModel.position.y;
             shadowPlane.visible    = true;
 
-            reticleGroup.position.set(position.x, position.y + 0.003, position.z);
+            reticleGroup.position.set(arModel.position.x, arModel.position.y + 0.003, arModel.position.z);
             reticleGroup.visible = true;
-            // Slow pulse on the reticle outer scale
             reticleGroup.scale.setScalar(0.92 + 0.08 * Math.sin(Date.now() * 0.003));
+
+            // Update the surface label at most every 500 ms so it's live but not thrashing the DOM
+            const now = Date.now();
+            const label = arModel.position.y > 0.2
+              ? `Elevated surface (~${(arModel.position.y * 100).toFixed(0)} cm high)`
+              : 'Ground level surface';
+            if (label !== lastLabelText && now - lastLabelTime > 500) {
+              lastLabelText = label;
+              lastLabelTime = now;
+              surfaceLabelEl.textContent = label;
+            }
 
             if (!surfaceReady) {
               surfaceReady = true;
-              // Tell the user what kind of surface was found
-              const label = position.y > 0.2 ? `Elevated surface (~${(position.y * 100).toFixed(0)} cm high)` : 'Ground level surface';
-              surfaceLabelEl.textContent = label;
               surfaceLabelEl.classList.add('visible');
               showSurfaceReadyUI('1 finger: rotate  |  Pinch: scale');
             }
