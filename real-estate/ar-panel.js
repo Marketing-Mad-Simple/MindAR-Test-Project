@@ -1,0 +1,274 @@
+(function () {
+  var config = window.AR_CONFIG;
+  if (!config) { console.error('[AR] window.AR_CONFIG not defined'); return; }
+
+  // ── Brand CSS variables ──────────────────────────────
+  var root = document.documentElement;
+  root.style.setProperty('--brand-primary', config.brand.primaryColor);
+  root.style.setProperty('--brand-accent',  config.brand.accentColor);
+
+  // ── Populate header ──────────────────────────────────
+  document.getElementById('brand-name').textContent    = config.brand.projectName;
+  document.getElementById('brand-tagline').textContent = config.brand.tagline;
+  document.title = config.brand.name + ' — AR Experience';
+
+  var logoEl = document.getElementById('panel-logo');
+  logoEl.onerror = function () {
+    var ph = document.createElement('div');
+    ph.className   = 'brand-logo-placeholder';
+    ph.textContent = config.brand.initials || config.brand.name.charAt(0);
+    logoEl.parentNode.replaceChild(ph, logoEl);
+  };
+
+  // ── Highlights ───────────────────────────────────────
+  var highlightsRow = document.getElementById('highlights-row');
+  (config.highlights || []).forEach(function (h) {
+    var chip = document.createElement('div');
+    chip.className = 'highlight-chip';
+    chip.innerHTML =
+      '<span class="highlight-icon">' + h.icon + '</span>' +
+      '<span class="highlight-label">' + h.label + '</span>';
+    highlightsRow.appendChild(chip);
+  });
+
+  // ── Gallery strip ────────────────────────────────────
+  var galleryStrip = document.getElementById('gallery-strip');
+  var gallery = config.gallery || [];
+
+  gallery.forEach(function (item, index) {
+    var img = document.createElement('img');
+    img.className = 'gallery-thumb';
+    img.src = item.src;
+    img.alt = item.caption || '';
+    img.loading = 'lazy';
+    img.addEventListener('click', function () { openLightbox(index); });
+    img.onerror = function () {
+      var ph = document.createElement('div');
+      ph.className = 'gallery-thumb-placeholder';
+      ph.textContent = '📷';
+      ph.addEventListener('click', function () { openLightbox(index); });
+      galleryStrip.replaceChild(ph, img);
+    };
+    galleryStrip.appendChild(img);
+  });
+
+  // Stop the gallery strip's touchstart from bubbling to the A-Frame canvas.
+  // Without this the browser's touch-action arbitration cancels our pan-x scroll.
+  galleryStrip.addEventListener('touchstart', function (e) {
+    e.stopPropagation();
+  }, { passive: true });
+
+  // ── CTAs ─────────────────────────────────────────────
+  document.getElementById('cta-call').addEventListener('click', function () {
+    window.location.href = 'tel:' + config.contact.phone;
+  });
+  document.getElementById('cta-whatsapp').addEventListener('click', function () {
+    var num = config.contact.whatsapp.replace(/[^0-9]/g, '');
+    var msg = encodeURIComponent(
+      config.contact.whatsappMessage || 'Hi, I would like to know more about ' + config.brand.projectName
+    );
+    window.open('https://wa.me/' + num + '?text=' + msg, '_blank');
+  });
+
+  // ── AR setup ─────────────────────────────────────────
+  var panel = document.getElementById('ar-panel');
+  // Prevent any touch on the panel from reaching the A-Frame canvas below.
+  panel.addEventListener('touchstart', function (e) {
+    e.stopPropagation();
+  }, { passive: true });
+  var hint    = document.getElementById('hint');
+  var loading = document.getElementById('loading-screen');
+  var sceneEl = document.querySelector('a-scene');
+  var targetEl = document.getElementById('ar-target');
+
+  var isTracking = false;
+  var hideTimer  = null;
+
+  // Panel natural dimensions (design canvas).
+  // The rAF loop scales these to match the pamphlet on screen.
+  var PANEL_W = 400;
+  var PANEL_H = Math.round(PANEL_W * (config.pamphletAspect || 1.4156));
+  panel.style.width  = PANEL_W + 'px';
+  panel.style.height = PANEL_H + 'px';
+  // Anchor at top-left, only `transform` changes each frame so layout never
+  // re-triggers and touch hit-testing stays stable across frames.
+  panel.style.left = '0';
+  panel.style.top  = '0';
+
+  function showPanel() {
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+    panel.classList.add('visible');
+    hint.style.display = 'none';
+  }
+
+  function hidePanel() {
+    panel.classList.remove('visible');
+    hint.style.display = 'block';
+  }
+
+  // ── Loading → Tap to Begin ───────────────────────────
+  sceneEl.addEventListener('arReady', function () {
+    console.log('[AR] arReady');
+    var spinner = loading.querySelector('.spinner');
+    var msg     = loading.querySelector('p');
+    if (spinner) spinner.style.display = 'none';
+    msg.textContent  = 'TAP TO BEGIN';
+    msg.style.color  = '#fff';
+    msg.style.fontSize      = '1rem';
+    msg.style.letterSpacing = '3px';
+    loading.style.cursor = 'pointer';
+
+    // A real tap gesture is required so WKWebView (WhatsApp/Instagram in-app
+    // browser) allows camera and media APIs to activate.
+    loading.addEventListener('click', function onTap() {
+      loading.removeEventListener('click', onTap);
+      loading.style.transition = 'opacity 0.4s ease';
+      loading.style.opacity    = '0';
+      setTimeout(function () { loading.style.display = 'none'; }, 400);
+      hint.style.display = 'block';
+    });
+  });
+
+  sceneEl.addEventListener('arError', function () {
+    console.error('[AR] arError');
+    var spinner = loading.querySelector('.spinner');
+    var msg     = loading.querySelector('p');
+    if (spinner) spinner.style.display = 'none';
+    msg.textContent = 'Camera access required';
+    msg.style.color = '#f55';
+  });
+
+  targetEl.addEventListener('targetFound', function () {
+    isTracking = true;
+    console.log('[AR] targetFound');
+    showPanel();
+  });
+
+  targetEl.addEventListener('targetLost', function () {
+    isTracking = false;
+    console.log('[AR] targetLost');
+    // Small delay so brief interruptions (tracking hiccup) don't flash the panel away.
+    hideTimer = setTimeout(function () {
+      if (!isTracking) hidePanel();
+      hideTimer = null;
+    }, 800);
+  });
+
+  // ── Per-frame projection loop ─────────────────────────
+  /*
+    Three invisible A-Frame entities sit at known positions relative to the
+    image target (center, right-edge mid, top-edge mid). Each frame we project
+    their world positions onto screen space using the A-Frame camera, then derive
+    the pamphlet's screen centre, apparent width, apparent height, and in-plane
+    rotation. We apply that as a CSS 2D transform on the panel so it tracks the
+    pamphlet exactly. A CSS 2D transform (not matrix3d) is used intentionally:
+    it keeps touch events (scroll, tap) working correctly inside the panel.
+  */
+  sceneEl.addEventListener('loaded', function () {
+    var anchorCenter = document.getElementById('anchor-center');
+    var anchorRight  = document.getElementById('anchor-right');
+    var anchorTop    = document.getElementById('anchor-top');
+    var tmp = new AFRAME.THREE.Vector3();
+
+    function project(entity) {
+      entity.object3D.getWorldPosition(tmp);
+      tmp.project(sceneEl.camera);
+      return {
+        x: ( tmp.x * 0.5 + 0.5) * window.innerWidth,
+        y: (-tmp.y * 0.5 + 0.5) * window.innerHeight,
+      };
+    }
+
+    function tick() {
+      if (sceneEl.camera && isTracking) {
+        var c = project(anchorCenter);
+        var r = project(anchorRight);
+        var t = project(anchorTop);
+
+        // Right-direction vector in screen space → gives rotation + screen width
+        var rdx = r.x - c.x, rdy = r.y - c.y;
+        var sw    = 2 * Math.sqrt(rdx * rdx + rdy * rdy);
+        var theta = Math.atan2(rdy, rdx); // in-plane rotation (radians)
+
+        // Top-direction vector → screen height
+        var tdx = t.x - c.x, tdy = t.y - c.y;
+        var sh  = 2 * Math.sqrt(tdx * tdx + tdy * tdy);
+
+        var sx = sw / PANEL_W;
+        var sy = sh / PANEL_H;
+
+        // translate() moves the element's centre (transform-origin: center center)
+        // to the pamphlet's screen centre; rotate + scale happen around that point.
+        // Only `transform` is written — left/top are fixed at 0 so layout never
+        // re-triggers and active touch sequences (scroll, tap) are not interrupted.
+        panel.style.transform =
+          'translate(' + (c.x - PANEL_W / 2) + 'px,' + (c.y - PANEL_H / 2) + 'px)' +
+          ' rotate(' + theta + 'rad)' +
+          ' scale(' + sx + ',' + sy + ')';
+      }
+      requestAnimationFrame(tick);
+    }
+
+    requestAnimationFrame(tick);
+  });
+
+  // ── Lightbox ─────────────────────────────────────────
+  var lightbox  = document.getElementById('lightbox');
+  var lbImg     = document.getElementById('lb-img');
+  var lbCounter = document.getElementById('lb-counter');
+  var lbCaption = document.getElementById('lb-caption');
+  var lbPrev    = document.getElementById('lb-prev');
+  var lbNext    = document.getElementById('lb-next');
+  var lbClose   = document.getElementById('lb-close');
+  var currentIdx = 0;
+
+  function openLightbox(index) {
+    currentIdx = index;
+    updateLightbox();
+    lightbox.classList.add('visible');
+  }
+
+  function closeLightbox() {
+    lightbox.classList.remove('visible');
+  }
+
+  function updateLightbox() {
+    var item = gallery[currentIdx];
+    if (!item) return;
+    lbImg.src             = item.src;
+    lbCaption.textContent = item.caption || '';
+    lbCounter.textContent = (currentIdx + 1) + ' / ' + gallery.length;
+    lbPrev.style.visibility = gallery.length > 1 ? 'visible' : 'hidden';
+    lbNext.style.visibility = gallery.length > 1 ? 'visible' : 'hidden';
+  }
+
+  lbClose.addEventListener('click', closeLightbox);
+
+  lbPrev.addEventListener('click', function () {
+    currentIdx = (currentIdx - 1 + gallery.length) % gallery.length;
+    updateLightbox();
+  });
+  lbNext.addEventListener('click', function () {
+    currentIdx = (currentIdx + 1) % gallery.length;
+    updateLightbox();
+  });
+
+  var touchStartX = 0;
+  lightbox.addEventListener('touchstart', function (e) {
+    touchStartX = e.touches[0].clientX;
+  }, { passive: true });
+  lightbox.addEventListener('touchend', function (e) {
+    var delta = e.changedTouches[0].clientX - touchStartX;
+    if (Math.abs(delta) > 48) {
+      currentIdx = delta < 0
+        ? (currentIdx + 1) % gallery.length
+        : (currentIdx - 1 + gallery.length) % gallery.length;
+      updateLightbox();
+    }
+  }, { passive: true });
+
+  lightbox.addEventListener('click', function (e) {
+    if (e.target === lightbox) closeLightbox();
+  });
+
+})();

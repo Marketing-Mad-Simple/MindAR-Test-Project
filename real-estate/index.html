@@ -1,0 +1,103 @@
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Real Estate AR</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        min-height: 100vh;
+        background: #0a0a0a;
+        color: white;
+        font-family: Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        padding: 32px 24px;
+      }
+      h1 {
+        font-size: 1.1rem;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        color: #aaa;
+        margin-bottom: 4px;
+        text-align: center;
+      }
+      p.sub {
+        font-size: 0.8rem;
+        color: #555;
+        text-align: center;
+        max-width: 300px;
+        line-height: 1.6;
+        margin-top: -8px;
+        margin-bottom: 8px;
+      }
+      a.card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        width: 100%;
+        max-width: 360px;
+        padding: 22px 20px;
+        border: 1px solid #222;
+        border-radius: 16px;
+        text-decoration: none;
+        color: white;
+        background: #111;
+        transition: background 0.2s, border-color 0.2s;
+      }
+      a.card:hover, a.card:active {
+        background: #1a1a1a;
+        border-color: #444;
+      }
+      .card-dot {
+        width: 12px; height: 12px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .dot-sunteck { background: #0d2b6e; }
+      .dot-dlf     { background: #1a3a1f; }
+      a.card h2 {
+        font-size: 0.95rem;
+        letter-spacing: 0.5px;
+        margin-bottom: 4px;
+      }
+      a.card p {
+        font-size: 0.78rem;
+        color: #666;
+        line-height: 1.5;
+      }
+      .back {
+        font-size: 0.75rem;
+        color: #555;
+        text-decoration: none;
+        letter-spacing: 1px;
+        margin-top: 12px;
+      }
+      .back:hover { color: #999; }
+    </style>
+  </head>
+  <body>
+    <h1>Real Estate AR</h1>
+    <p class="sub">Scan a property pamphlet to explore galleries and contact the agency.</p>
+
+    <a class="card" href="./sunteck/">
+      <div class="card-dot dot-sunteck"></div>
+      <div>
+        <h2>Sunteck Realty</h2>
+        <p>Scan the Sunteck pamphlet to preview Sky Park and get in touch.</p>
+      </div>
+    </a>
+
+    <a class="card" href="./dlf/">
+      <div class="card-dot dot-dlf"></div>
+      <div>
+        <h2>DLF</h2>
+        <p>Scan the DLF pamphlet to preview The Arbour and get in touch.</p>
+      </div>
+    </a>
+
+    <a class="back" href="../">&larr; All Experiences</a>
+  </body>
+</html>

@@ -1,0 +1,104 @@
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>DLF — AR Experience</title>
+    <link rel="stylesheet" href="../ar-panel.css" />
+    <script src="../../video-ar/debug.js"></script>
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <script src="config.js"></script>
+  </head>
+  <body>
+
+    <!-- Loading / Tap-to-begin screen -->
+    <div id="loading-screen">
+      <img id="loading-logo" src="assets/logo.png" alt="DLF"
+           onerror="this.style.display='none';document.getElementById('loading-brand-name').style.display='block'" />
+      <div id="loading-brand-name" style="display:none;font-size:1.1rem;font-weight:700;letter-spacing:2px;color:#fff;">DLF</div>
+      <div class="spinner"></div>
+      <p>Loading AR</p>
+    </div>
+
+    <!-- Shown while user is scanning -->
+    <div id="hint">Point camera at the pamphlet</div>
+
+    <!-- ── AR Overlay Panel ─────────────────────────── -->
+    <!--
+      This panel is positioned & scaled every animation frame by ar-panel.js
+      so it sits exactly on top of the tracked pamphlet.
+    -->
+    <div id="ar-panel">
+
+      <div class="panel-header">
+        <img class="brand-logo" id="panel-logo" src="assets/logo.png" alt="" />
+        <div class="brand-text">
+          <div class="brand-name"    id="brand-name"></div>
+          <div class="brand-tagline" id="brand-tagline"></div>
+        </div>
+      </div>
+
+      <!-- Transparent zone — brochure shows through here -->
+      <div class="panel-middle"></div>
+
+      <!-- Frosted lower section: highlights + gallery + CTAs -->
+      <div class="panel-lower">
+        <div class="highlights-row" id="highlights-row"></div>
+
+        <div class="section-title">Gallery</div>
+        <div class="gallery-strip" id="gallery-strip"></div>
+
+        <div class="panel-footer">
+          <button class="cta-btn cta-call" id="cta-call">
+            <span class="cta-icon">📞</span>
+            <span class="cta-label">Call Us</span>
+          </button>
+          <button class="cta-btn cta-whatsapp" id="cta-whatsapp">
+            <span class="cta-icon">💬</span>
+            <span class="cta-label">WhatsApp</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ── Gallery Lightbox ─────────────────────────── -->
+    <div id="lightbox">
+      <button id="lb-close">✕</button>
+      <div id="lb-counter"></div>
+      <img id="lb-img" src="" alt="" />
+      <button id="lb-prev">&#8249;</button>
+      <button id="lb-next">&#8250;</button>
+      <div id="lb-caption"></div>
+    </div>
+
+    <!--
+      A-Frame scene.
+      Three anchor entities inside the image-target give us world positions
+      to project to screen coords each frame (see ar-panel.js).
+
+      targets.mind: compile your pamphlet at
+        https://hiukim.github.io/mind-ar-js-doc/tools/compile
+    -->
+    <a-scene
+      mindar-image="imageTargetSrc: targets.mind; filterMinCF: 0.001; filterBeta: 0.01;"
+      color-space="sRGB"
+      renderer="colorManagement: true, physicallyCorrectLights"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false">
+
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <a-entity mindar-image-target="targetIndex: 0" id="ar-target">
+        <a-entity id="anchor-center" position="0 0 0.001"></a-entity>
+        <a-entity id="anchor-right"  position="0.5 0 0.001"></a-entity>
+        <a-entity id="anchor-top"    position="0 0.7078 0.001"></a-entity>
+      </a-entity>
+
+    </a-scene>
+
+    <script src="../ar-panel.js"></script>
+  </body>
+</html>
