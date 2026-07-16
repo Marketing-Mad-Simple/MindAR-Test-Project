@@ -107,7 +107,7 @@ body {
   gap: 12px;
   padding: 14px 16px;
   background: var(--brand-primary);
-  border-bottom: 1.5px solid var(--brand-accent);
+  border-bottom: 10px solid var(--brand-accent);
   flex-shrink: 0;
 }
 
