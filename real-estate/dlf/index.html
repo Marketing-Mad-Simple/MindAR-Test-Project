@@ -38,17 +38,20 @@
           <div class="brand-name"    id="brand-name"></div>
           <div class="brand-tagline" id="brand-tagline"></div>
         </div>
+        <button class="panel-close" id="panel-close">✕</button>
       </div>
 
-      <!-- Transparent zone — brochure shows through here -->
-      <div class="panel-middle"></div>
+      <!-- Gallery carousel — tapping image opens lightbox -->
+      <div class="panel-gallery">
+        <img class="gallery-main" id="gallery-main" src="" alt="" />
+        <button class="gallery-nav gallery-prev" id="gallery-prev">&#8249;</button>
+        <button class="gallery-nav gallery-next" id="gallery-next">&#8250;</button>
+        <div class="gallery-dots" id="gallery-dots"></div>
+      </div>
 
-      <!-- Frosted lower section: highlights + gallery + CTAs -->
+      <!-- Frosted lower section: highlights + CTAs -->
       <div class="panel-lower">
         <div class="highlights-row" id="highlights-row"></div>
-
-        <div class="section-title">Gallery</div>
-        <div class="gallery-strip" id="gallery-strip"></div>
 
         <div class="panel-footer">
           <button class="cta-btn cta-call" id="cta-call">
@@ -105,18 +108,27 @@
         <a-entity id="anchor-right"  position="0.5 0 0.001"></a-entity>
         <a-entity id="anchor-top"    position="0 0.7078 0.001"></a-entity>
 
-        <!--
-          Building model — sits in the transparent middle band of the HTML overlay.
-          Y 0.25 centres it between the header (~Y 0.53) and lower panel (~Y -0.04).
-          Rotates clockwise (negative Y) over 10 s, looping.
-          Adjust scale and position once you see the model size.
-        -->
-        <a-gltf-model
-          src="#building-model"
-          position="0 -0.1 0.1"
-          scale="0.05 0.05 0.05"
-          animation="property: rotation; from: 0 0 0; to: 0 -360 0; loop: true; dur: 10000; easing: linear">
-        </a-gltf-model>
+        <!-- Building + base grouped so base always sits at the building's foot.
+             X=-1.0 places the whole group left of the HTML panel.
+             Tune X / Y / scale on device as needed. -->
+        <a-entity id="building-group" position="-1.0 -0.7078 0.1">
+
+          <!-- Building: drag to rotate, no auto-spin -->
+          <a-gltf-model
+            src="#building-model"
+            position="0 0 0"
+            scale="0.1 0.1 0.1"
+            drag-rotate>
+          </a-gltf-model>
+
+          <a-text value="Drag to rotate"
+            position="0 -0.09 0"
+            color="white" opacity="0.65"
+            align="center" width="0.55"
+            wrap-count="20">
+          </a-text>
+
+        </a-entity>
       </a-entity>
 
     </a-scene>

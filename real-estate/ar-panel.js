@@ -1,3 +1,84 @@
+// ── Glossy base disc — programmatic env map ───────────
+// MeshStandardMaterial metalness only reflects an envMap; without one the
+// disc just looks black. This component builds a minimal PMREM env map from
+// a canvas (dark blue studio gradient) and assigns it to the disc material,
+// giving the blue reflective sheen seen in the reference image.
+AFRAME.registerComponent('glossy-base', {
+  init: function () {
+    var self = this;
+    this.el.sceneEl.addEventListener('loaded', function () { self.applyEnv(); }, { once: true });
+  },
+  applyEnv: function () {
+    var mesh = this.el.getObject3D('mesh');
+    if (!mesh) return;
+    var THREE    = AFRAME.THREE;
+    var renderer = this.el.sceneEl.renderer;
+
+    // Paint a 256×128 equirectangular canvas: dark base + soft blue highlight
+    var canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 128;
+    var ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#00050e';
+    ctx.fillRect(0, 0, 256, 128);
+    var g = ctx.createRadialGradient(128, 28, 0, 128, 28, 80);
+    g.addColorStop(0, 'rgba(25, 95, 230, 0.75)');
+    g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 256, 128);
+
+    var tex = new THREE.CanvasTexture(canvas);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+
+    var pmrem  = new THREE.PMREMGenerator(renderer);
+    pmrem.compileEquirectangularShader();
+    var envMap = pmrem.fromEquirectangular(tex).texture;
+    tex.dispose();
+    pmrem.dispose();
+
+    mesh.traverse(function (node) {
+      if (node.isMesh && node.material) {
+        node.material.envMap           = envMap;
+        node.material.envMapIntensity  = 2.5;
+        node.material.metalness        = 0.92;
+        node.material.roughness        = 0.08;
+        node.material.needsUpdate      = true;
+      }
+    });
+  }
+});
+
+// ── Drag-to-rotate A-Frame component ─────────────────
+// Attached to the building model entity. Listens on the canvas
+// for touch/mouse drags and spins the entity around its Y axis.
+// Panel touches never reach here because the panel calls stopPropagation.
+AFRAME.registerComponent('drag-rotate', {
+  schema: { sensitivity: { default: 0.45 } },
+  init: function () {
+    var el     = this.el;
+    var sens   = this.data.sensitivity;
+    var canvas = el.sceneEl.canvas;
+    var active = false;
+    var lastX  = 0;
+    var angleY = 0;
+
+    function start(x) { active = true; lastX = x; }
+    function move(x) {
+      if (!active) return;
+      angleY += (x - lastX) * sens;
+      lastX   = x;
+      el.setAttribute('rotation', { x: 0, y: angleY, z: 0 });
+    }
+    function end() { active = false; }
+
+    canvas.addEventListener('touchstart', function (e) { start(e.touches[0].clientX); }, { passive: true });
+    canvas.addEventListener('touchmove',  function (e) { move(e.touches[0].clientX);  }, { passive: true });
+    canvas.addEventListener('touchend',   end, { passive: true });
+    canvas.addEventListener('mousedown',  function (e) { start(e.clientX); });
+    canvas.addEventListener('mousemove',  function (e) { move(e.clientX);  });
+    canvas.addEventListener('mouseup',    end);
+  }
+});
+
 (function () {
   var config = window.AR_CONFIG;
   if (!config) { console.error('[AR] window.AR_CONFIG not defined'); return; }
@@ -31,30 +112,48 @@
     highlightsRow.appendChild(chip);
   });
 
-  // ── Gallery strip ────────────────────────────────────
-  var galleryStrip = document.getElementById('gallery-strip');
+  // ── Gallery carousel ─────────────────────────────────
   var gallery = config.gallery || [];
+  var currentGalleryIdx = 0;
+  var galleryMainEl  = document.getElementById('gallery-main');
+  var galleryDotsEl  = document.getElementById('gallery-dots');
+  var galleryPrevBtn = document.getElementById('gallery-prev');
+  var galleryNextBtn = document.getElementById('gallery-next');
 
-  gallery.forEach(function (item, index) {
-    var img = document.createElement('img');
-    img.className = 'gallery-thumb';
-    img.src = item.src;
-    img.alt = item.caption || '';
-    img.loading = 'lazy';
-    img.addEventListener('click', function () { openLightbox(index); });
-    img.onerror = function () {
-      var ph = document.createElement('div');
-      ph.className = 'gallery-thumb-placeholder';
-      ph.textContent = '📷';
-      ph.addEventListener('click', function () { openLightbox(index); });
-      galleryStrip.replaceChild(ph, img);
-    };
-    galleryStrip.appendChild(img);
+  // Build dot indicators
+  gallery.forEach(function (_, i) {
+    var dot = document.createElement('button');
+    dot.className = 'gallery-dot' + (i === 0 ? ' active' : '');
+    dot.addEventListener('click', function () { setGallerySlide(i); });
+    galleryDotsEl.appendChild(dot);
   });
 
-  // Stop the gallery strip's touchstart from bubbling to the A-Frame canvas.
-  // Without this the browser's touch-action arbitration cancels our pan-x scroll.
-  galleryStrip.addEventListener('touchstart', function (e) {
+  function setGallerySlide(idx) {
+    currentGalleryIdx = (idx + gallery.length) % gallery.length;
+    var item = gallery[currentGalleryIdx];
+    galleryMainEl.src = item.src;
+    galleryMainEl.alt = item.caption || '';
+    var dots = galleryDotsEl.querySelectorAll('.gallery-dot');
+    dots.forEach(function (d, i) { d.classList.toggle('active', i === currentGalleryIdx); });
+  }
+
+  if (gallery.length > 0) setGallerySlide(0);
+
+  galleryPrevBtn.addEventListener('click', function () { setGallerySlide(currentGalleryIdx - 1); });
+  galleryNextBtn.addEventListener('click', function () { setGallerySlide(currentGalleryIdx + 1); });
+
+  // Tap main image → open lightbox at current slide
+  galleryMainEl.addEventListener('click', function () { openLightbox(currentGalleryIdx); });
+
+  // Swipe on the carousel image
+  var carouselTouchX = 0;
+  galleryMainEl.addEventListener('touchstart', function (e) {
+    carouselTouchX = e.touches[0].clientX;
+    e.stopPropagation();
+  }, { passive: true });
+  galleryMainEl.addEventListener('touchend', function (e) {
+    var delta = e.changedTouches[0].clientX - carouselTouchX;
+    if (Math.abs(delta) > 40) setGallerySlide(delta < 0 ? currentGalleryIdx + 1 : currentGalleryIdx - 1);
     e.stopPropagation();
   }, { passive: true });
 
@@ -68,6 +167,11 @@
       config.contact.whatsappMessage || 'Hi, I would like to know more about ' + config.brand.projectName
     );
     window.open('https://wa.me/' + num + '?text=' + msg, '_blank');
+  });
+
+  // ── Close button ─────────────────────────────────────
+  document.getElementById('panel-close').addEventListener('click', function () {
+    hidePanel();
   });
 
   // ── AR setup ─────────────────────────────────────────
