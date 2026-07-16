@@ -96,7 +96,6 @@
         <a-asset-item id="building-model" src="assets/Building_2.glb"></a-asset-item>
       </a-assets>
 
-      <!-- Lights: ambient fill + directional key light for depth on the model -->
       <a-entity light="type: ambient; color: #ffffff; intensity: 0.8"></a-entity>
       <a-entity light="type: directional; color: #ffffff; intensity: 1.8" position="2 4 3"></a-entity>
 
@@ -108,27 +107,21 @@
         <a-entity id="anchor-right"  position="0.5 0 0.001"></a-entity>
         <a-entity id="anchor-top"    position="0 0.7078 0.001"></a-entity>
 
-        <!-- Building + base grouped so base always sits at the building's foot.
-             X=-1.0 places the whole group left of the HTML panel.
-             Tune X / Y / scale on device as needed. -->
         <a-entity id="building-group" position="-1.0 -0.7078 0.1">
-
-          <!-- Building: drag to rotate, no auto-spin -->
           <a-gltf-model
             src="#building-model"
             position="0 0 0"
             scale="0.1 0.1 0.1"
             drag-rotate>
           </a-gltf-model>
-
           <a-text value="Drag to rotate"
             position="0 -0.09 0"
             color="white" opacity="0.65"
             align="center" width="0.55"
             wrap-count="20">
           </a-text>
-
         </a-entity>
+
       </a-entity>
 
     </a-scene>

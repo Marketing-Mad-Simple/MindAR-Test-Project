@@ -5,8 +5,8 @@ window.AR_CONFIG = {
     name:         'Sunteck Realty',
     projectName:  'Sunteck Beach',
     tagline:      'Luxury Residences · Mumbai',
-    primaryColor: '#0d2b6e',
-    accentColor:  '#c8a84b',
+    primaryColor: '#1a2440',
+    accentColor:  '#c8943c',
     initials:     'SR',
   },
 
