@@ -5,8 +5,8 @@ window.AR_CONFIG = {
     name:         'DLF',
     projectName:  'DLF',
     tagline:      'Luxury Residences',
-    primaryColor: '#1c3824',
-    accentColor:  '#c9a84c',
+    primaryColor: '#1f1a17',
+    accentColor:  '#e8e2da',
     initials:     'DLF',
   },
 
