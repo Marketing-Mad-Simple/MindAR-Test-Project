@@ -412,6 +412,11 @@
         This means the panel scales with distance just like the 3-D model does:
         step back → smaller, step forward → larger.
       */
+      // Minimum readable panel width: 72 % of screen width.
+      // If the world-space projection would produce something smaller we scale
+      // both dimensions up uniformly so the aspect ratio is preserved.
+      const MIN_W_FRAC = 0.72;
+
       function updateWebPanel() {
         if (!cam || !billboardAnchor) return;
 
@@ -420,7 +425,7 @@
         const sw = window.innerWidth;
         const sh = window.innerHeight;
 
-        // Camera-space right and up vectors (billboard faces camera exactly)
+        // Camera right + up vectors — billboard always faces camera
         _r.set(1, 0, 0).applyQuaternion(cam.quaternion);
         _t.set(0, 1, 0).applyQuaternion(cam.quaternion);
 
@@ -433,14 +438,27 @@
 
         // Project right-edge midpoint → screen half-width
         _r.multiplyScalar(hw).add(pos).project(cam);
-        const shw = Math.abs((_r.x * 0.5 + 0.5) * sw - cx);
+        let shw = Math.abs((_r.x * 0.5 + 0.5) * sw - cx);
 
         // Project top-edge midpoint → screen half-height
         _t.multiplyScalar(hh).add(pos).project(cam);
-        const shh = Math.abs((-_t.y * 0.5 + 0.5) * sh - cy);
+        let shh = Math.abs((-_t.y * 0.5 + 0.5) * sh - cy);
 
-        webPanel.style.left   = (cx - shw) + 'px';
-        webPanel.style.top    = (cy - shh) + 'px';
+        // Enforce minimum size — scale both axes together to keep aspect ratio
+        const minHW = (sw * MIN_W_FRAC) / 2;
+        if (shw < minHW) {
+          const scale = minHW / shw;
+          shw *= scale;
+          shh *= scale;
+        }
+
+        // Clamp so the panel stays fully on-screen regardless of where the
+        // billboard centre projects (e.g. user is looking slightly away)
+        const left = Math.max(0, Math.min(cx - shw, sw - shw * 2));
+        const top  = Math.max(0, Math.min(cy - shh, sh - shh * 2));
+
+        webPanel.style.left   = left       + 'px';
+        webPanel.style.top    = top        + 'px';
         webPanel.style.width  = (shw * 2)  + 'px';
         webPanel.style.height = (shh * 2)  + 'px';
       }
@@ -501,20 +519,12 @@
 
         // Invisible anchor positioned above the surface where the model sits.
         // Its screen-space projection centres the website panel each frame.
-        // Anchor sits at the billboard's world-space centre above the surface
+        // Invisible anchor — its world position is projected to screen each frame
+        // to centre the website panel, giving it the same "placed on surface" feel
+        // as the 3-D model without needing any visible geometry.
         billboardAnchor = new THREE.Object3D();
         billboardAnchor.position.set(0, cfg.billboard.yCenter, 0);
         scene.add(billboardAnchor);
-
-        // Visual debug outline so you can see exactly where the billboard quad is
-        // (remove once positioning feels right)
-        const outlineGeo = new THREE.EdgesGeometry(
-          new THREE.PlaneGeometry(cfg.billboard.width, cfg.billboard.height)
-        );
-        const outlineMat = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.3, transparent: true });
-        const outlineMesh = new THREE.LineSegments(outlineGeo, outlineMat);
-        outlineMesh.name = 'billboard-debug';
-        billboardAnchor.add(outlineMesh);
 
         camera.position.set(0, 2, 2);
 
