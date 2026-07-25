@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DLF — AR Experience</title>
+
+  <!-- Brand config must load before the module script -->
+  <script src="config.js"></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js" async crossorigin="anonymous" data-preload-chunks="slam"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@8thwall/xrextras@1/dist/xrextras.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@8thwall/landing-page@1/dist/landing-page.js" crossorigin="anonymous"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { overflow: hidden; background: #000; }
+    canvas { position: fixed; inset: 0; }
+
+    /* ── Loading spinner ──────────────────────────────── */
+    #model-loader {
+      position: fixed; inset: 0;
+      background: #000; z-index: 500;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 16px; color: white;
+      font-family: Arial, sans-serif; font-size: 0.88rem; letter-spacing: 0.5px;
+    }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid rgba(255,255,255,0.2);
+      border-top-color: white; border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Placement hint ───────────────────────────────── */
+    #hint {
+      position: fixed; bottom: 40px; left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.6); color: white;
+      font-family: Arial, sans-serif; font-size: 0.88rem;
+      padding: 10px 22px; border-radius: 999px;
+      pointer-events: none; white-space: nowrap; z-index: 100;
+    }
+
+    /* ── Bottom controls (hidden until model is placed) ─ */
+    #controls {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%);
+      display: none; flex-direction: column;
+      align-items: center; gap: 12px; z-index: 250;
+    }
+    #controls.visible { display: flex; }
+
+    /* ── Mode toggle pill ─────────────────────────────── */
+    #mode-toggle {
+      display: flex;
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(255,255,255,0.22);
+      border-radius: 999px; padding: 3px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .mode-btn {
+      padding: 9px 24px; border: none; border-radius: 999px;
+      font-family: Arial, sans-serif; font-size: 0.84rem; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+      background: transparent; color: rgba(255,255,255,0.55);
+      transition: background 0.2s, color 0.2s;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .mode-btn.active { background: white; color: #000; }
+
+    /* ── Enquire button ───────────────────────────────── */
+    #enquire-btn {
+      background: white; color: #000;
+      font-family: Arial, sans-serif; font-size: 0.95rem;
+      font-weight: bold; letter-spacing: 1px;
+      padding: 14px 40px; border: none; border-radius: 32px;
+      cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+
+    /* ── Floating website panel ───────────────────────── */
+    /*
+      Positioned (left/top/width/height) by JS every frame
+      so it covers the projected billboard area.
+      pointer-events off until visible so touches fall through to canvas.
+    */
+    #web-panel {
+      position: fixed; left: 0; top: 0;
+      display: flex; flex-direction: column;
+      overflow: hidden; border-radius: 12px;
+      border: 1.5px solid rgba(255,255,255,0.18);
+      box-shadow: 0 8px 48px rgba(0,0,0,0.7),
+                  0 0 0 1px rgba(255,255,255,0.06);
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.25s ease;
+      z-index: 150;
+      will-change: transform, left, top, width, height;
+    }
+    #web-panel.visible { opacity: 1; pointer-events: auto; }
+
+    #web-header {
+      display: flex; align-items: center;
+      padding: 8px 10px; gap: 8px; flex-shrink: 0;
+      /* background set by JS from config */
+    }
+    #web-brand-name {
+      flex: 1; font-family: Arial, sans-serif;
+      font-size: 0.8rem; font-weight: 700;
+      color: white; letter-spacing: 1.5px; text-transform: uppercase;
+    }
+    #web-open-btn {
+      font-family: Arial, sans-serif; font-size: 0.7rem;
+      color: rgba(255,255,255,0.75); text-decoration: none;
+      padding: 4px 10px; border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.28);
+      white-space: nowrap;
+      -webkit-tap-highlight-color: transparent;
+    }
+    #web-iframe {
+      flex: 1; width: 100%; border: none; background: #fff;
+      display: block;
+    }
+
+    /* ── Enquiry bottom sheet ─────────────────────────── */
+    #sheet-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5); z-index: 300;
+    }
+    #sheet-overlay.open { display: block; }
+
+    #enquiry-sheet {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #111; border-radius: 20px 20px 0 0;
+      padding: 28px 24px 36px; z-index: 301;
+      transform: translateY(100%); transition: transform 0.35s ease;
+      max-height: 90vh; overflow-y: auto;
+    }
+    #enquiry-sheet.open { transform: translateY(0); }
+
+    #sheet-drag-handle {
+      width: 40px; height: 4px; background: #444;
+      border-radius: 2px; margin: 0 auto 20px;
+    }
+    #enquiry-sheet h2 {
+      font-family: Arial, sans-serif; font-size: 1.1rem;
+      color: white; margin-bottom: 4px;
+    }
+    #enquiry-sheet p.subtitle {
+      font-family: Arial, sans-serif; font-size: 0.82rem;
+      color: #888; margin-bottom: 24px;
+    }
+
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block; font-family: Arial, sans-serif;
+      font-size: 0.78rem; color: #aaa;
+      margin-bottom: 6px; letter-spacing: 0.5px;
+    }
+    .field input, .field textarea {
+      width: 100%; background: #1e1e1e; border: 1px solid #2e2e2e;
+      border-radius: 10px; color: white;
+      font-family: Arial, sans-serif; font-size: 0.95rem;
+      padding: 12px 14px; outline: none;
+      -webkit-appearance: none; appearance: none;
+      transition: border-color 0.2s;
+    }
+    .field input:focus, .field textarea:focus { border-color: #555; }
+    .field textarea { resize: none; height: 96px; }
+    .field.error input, .field.error textarea { border-color: #e05; }
+    .field .error-msg {
+      display: none; margin-top: 5px;
+      font-family: Arial, sans-serif; font-size: 0.75rem; color: #e05;
+    }
+    .field.error .error-msg { display: block; }
+
+    #submit-btn {
+      width: 100%; margin-top: 8px; padding: 15px;
+      background: white; color: #000;
+      font-family: Arial, sans-serif; font-size: 0.95rem; font-weight: bold;
+      border: none; border-radius: 12px; cursor: pointer; letter-spacing: 0.5px;
+    }
+
+    #thank-you {
+      display: none; flex-direction: column; align-items: center;
+      justify-content: center; padding: 24px 0 8px; gap: 12px;
+      color: white; font-family: Arial, sans-serif; text-align: center;
+    }
+    #thank-you .check { font-size: 2.4rem; }
+    #thank-you h3 { font-size: 1.1rem; margin: 0; }
+    #thank-you p  { font-size: 0.85rem; color: #888; margin: 0; }
+  </style>
+</head>
+<body>
+
+  <canvas id="camerafeed"></canvas>
+
+  <div id="model-loader">
+    <div class="spinner"></div>
+    <span>Loading&hellip;</span>
+  </div>
+
+  <div id="hint">Tap a surface to place the model</div>
+
+  <!-- Shown after first placement -->
+  <div id="controls">
+    <div id="mode-toggle">
+      <button class="mode-btn active" id="btn-model">3D Model</button>
+      <button class="mode-btn"        id="btn-web">Website</button>
+    </div>
+    <button id="enquire-btn">Enquire Now</button>
+  </div>
+
+  <!-- Floating website billboard panel — JS positions this each frame -->
+  <div id="web-panel">
+    <div id="web-header">
+      <span id="web-brand-name"></span>
+      <a id="web-open-btn" href="#" target="_blank" rel="noopener noreferrer">Open ↗</a>
+    </div>
+    <iframe id="web-iframe" src=""
+      allow="camera; microphone"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+  </div>
+
+  <!-- Enquiry bottom sheet -->
+  <div id="sheet-overlay"></div>
+  <div id="enquiry-sheet">
+    <div id="sheet-drag-handle"></div>
+    <div id="form-content">
+      <h2>Enquire About This Property</h2>
+      <p class="subtitle">Fill in your details and we'll get back to you shortly.</p>
+      <form id="enquiry-form" novalidate>
+        <div class="field" id="field-name-wrap">
+          <label for="field-name">Full Name</label>
+          <input id="field-name" type="text" placeholder="Jane Smith" autocomplete="name" />
+          <span class="error-msg">Please enter your full name.</span>
+        </div>
+        <div class="field" id="field-phone-wrap">
+          <label for="field-phone">Phone Number</label>
+          <input id="field-phone" type="tel" placeholder="+91 98765 43210" autocomplete="tel" />
+          <span class="error-msg">Please enter a valid phone number.</span>
+        </div>
+        <div class="field" id="field-email-wrap">
+          <label for="field-email">Email Address</label>
+          <input id="field-email" type="email" placeholder="you@example.com" autocomplete="email" />
+          <span class="error-msg">Please enter a valid email address.</span>
+        </div>
+        <div class="field">
+          <label for="field-enquiry">Enquiry <span style="color:#555;font-size:0.72rem">(optional)</span></label>
+          <textarea id="field-enquiry" placeholder="I'd like to know more about&hellip;"></textarea>
+        </div>
+        <button type="submit" id="submit-btn">Send Enquiry</button>
+      </form>
+    </div>
+    <div id="thank-you">
+      <div class="check">&#10003;</div>
+      <h3>Thank you!</h3>
+      <p>We've received your enquiry and will be in touch soon.</p>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader }  from 'three/addons/loaders/GLTFLoader.js';
+    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+    window.THREE = THREE;
+
+    const cfg = window.XR_CONFIG;
+
+    // ── Apply brand to web panel ──────────────────────────
+    document.getElementById('web-header').style.background = cfg.brand.primaryColor;
+    document.getElementById('web-brand-name').textContent  = cfg.brand.name;
+    document.getElementById('web-open-btn').href           = cfg.website.url;
+
+    const webPanel   = document.getElementById('web-panel');
+    const webIframe  = document.getElementById('web-iframe');
+    const controlsEl = document.getElementById('controls');
+    const hintEl     = document.getElementById('hint');
+
+    const BB_W = cfg.billboard.width;
+    const BB_H = cfg.billboard.height;
+    const BB_Y = cfg.billboard.yCenter;
+
+    // ── AR scene pipeline module ──────────────────────────
+    const initScenePipelineModule = () => {
+      let model          = null;
+      let billboardAnchor = null;  // invisible THREE.Object3D — anchor for projection
+      let shadowPlane    = null;
+      let cam            = null;
+      let placed         = false;
+      let isWebMode      = false;
+      let iframeLoaded   = false;
+
+      // Pre-allocated temp vectors — avoids GC pressure in the render loop
+      const _c = new THREE.Vector3();
+      const _r = new THREE.Vector3();
+      const _t = new THREE.Vector3();
+
+      // Projects a world-space Vector3 to { x, y } screen pixels
+      function toScreen(v) {
+        return {
+          x: ( v.x * 0.5 + 0.5) * window.innerWidth,
+          y: (-v.y * 0.5 + 0.5) * window.innerHeight,
+        };
+      }
+
+      /*
+        Every frame (onRender) we treat the billboard as a camera-facing plane
+        of BB_W × BB_H world units centred at billboardAnchor.position.
+        We derive its right and top world-space offsets by rotating the unit
+        axes by the camera quaternion (pure billboard), project the three
+        characteristic points (centre, right-edge, top-edge) to screen space,
+        and drive the web-panel div to exactly cover the result.
+      */
+      function updateWebPanel() {
+        if (!cam || !billboardAnchor) return;
+
+        const quat = cam.quaternion;
+        const pos  = billboardAnchor.position;
+
+        // Centre
+        _c.copy(pos).project(cam);
+        const cx = toScreen(_c).x;
+        const cy = toScreen(_c).y;
+
+        // Right-edge midpoint (billboard faces camera → use cam quaternion)
+        _r.set(BB_W / 2, 0, 0).applyQuaternion(quat).add(pos).project(cam);
+        const shw = Math.abs(toScreen(_r).x - cx);
+
+        // Top-edge midpoint
+        _t.set(0, BB_H / 2, 0).applyQuaternion(quat).add(pos).project(cam);
+        const shh = Math.abs(toScreen(_t).y - cy);
+
+        webPanel.style.left   = (cx - shw) + 'px';
+        webPanel.style.top    = (cy - shh) + 'px';
+        webPanel.style.width  = (shw * 2)  + 'px';
+        webPanel.style.height = (shh * 2)  + 'px';
+      }
+
+      // ── Mode switch handlers ────────────────────────────
+      document.getElementById('btn-model').addEventListener('click', () => {
+        if (!isWebMode) return;
+        isWebMode = false;
+        document.getElementById('btn-model').classList.add('active');
+        document.getElementById('btn-web').classList.remove('active');
+        if (model) model.visible = true;
+        webPanel.classList.remove('visible');
+      });
+
+      document.getElementById('btn-web').addEventListener('click', () => {
+        if (isWebMode || !placed) return;
+        isWebMode = true;
+        document.getElementById('btn-web').classList.add('active');
+        document.getElementById('btn-model').classList.remove('active');
+        if (model) model.visible = false;
+        // Lazy-load the iframe on first switch to website mode
+        if (!iframeLoaded) {
+          webIframe.src = cfg.website.url;
+          iframeLoaded  = true;
+        }
+        webPanel.classList.add('visible');
+      });
+
+      // ── Scene setup ─────────────────────────────────────
+      const initXrScene = ({scene, camera, renderer}) => {
+        cam = camera;
+
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+
+        scene.add(new THREE.AmbientLight(0xffffff, 1.2));
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+        dirLight.position.set(5, 10, 7);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width  = dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.normalBias = 0.05;
+        dirLight.shadow.bias       = -0.001;
+        scene.add(dirLight);
+
+        const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
+        fillLight.position.set(-3, 5, -4);
+        scene.add(fillLight);
+
+        // Invisible shadow-receiver plane
+        const planeGeo = new THREE.PlaneGeometry(2000, 2000);
+        planeGeo.rotateX(-Math.PI / 2);
+        shadowPlane = new THREE.Mesh(planeGeo, new THREE.ShadowMaterial({opacity: 0.4}));
+        shadowPlane.receiveShadow = true;
+        shadowPlane.visible = false;
+        scene.add(shadowPlane);
+
+        // Billboard anchor — purely for projection maths, no visible geometry
+        billboardAnchor = new THREE.Object3D();
+        billboardAnchor.position.set(0, BB_Y, 0);
+        scene.add(billboardAnchor);
+
+        camera.position.set(0, 2, 2);
+
+        const draco = new DRACOLoader();
+        draco.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/libs/draco/gltf/');
+        const loader = new GLTFLoader();
+        loader.setDRACOLoader(draco);
+        loader.load(cfg.model.path, gltf => {
+          model = gltf.scene;
+          model.scale.setScalar(cfg.model.scale);
+          model.position.set(0, 0, 0);
+          model.visible = false;
+          model.traverse(c => { if (c.isMesh) c.castShadow = c.receiveShadow = true; });
+          scene.add(model);
+          document.getElementById('model-loader').style.display = 'none';
+        });
+      };
+
+      return {
+        name: 'initxrscene',
+
+        onStart: ({canvas}) => {
+          const {scene, camera, renderer} = XR8.Threejs.xrScene();
+          initXrScene({scene, camera, renderer});
+
+          canvas.addEventListener('touchmove', e => e.preventDefault(), {passive: false});
+
+          XR8.XrController.updateCameraProjectionMatrix({
+            origin: camera.position,
+            facing: camera.quaternion,
+          });
+
+          canvas.addEventListener('touchstart', e => {
+            // Only handle the very first tap (before model is placed)
+            if (e.touches.length !== 1 || !model || placed) return;
+            XR8.XrController.recenter();
+            placed = true;
+            model.visible       = true;
+            shadowPlane.visible = true;
+            hintEl.style.display = 'none';
+            controlsEl.classList.add('visible');
+          }, {passive: true});
+        },
+
+        // Called after each frame is rendered — camera matrices are fully updated here
+        onRender: () => {
+          if (placed && isWebMode) {
+            updateWebPanel();
+          }
+        },
+      };
+    };
+
+    const onxrloaded = () => {
+      XR8.addCameraPipelineModules([
+        XR8.GlTextureRenderer.pipelineModule(),
+        XR8.Threejs.pipelineModule(),
+        XR8.XrController.pipelineModule(),
+        LandingPage.pipelineModule(),
+        XRExtras.FullWindowCanvas.pipelineModule(),
+        XRExtras.Loading.pipelineModule(),
+        XRExtras.RuntimeError.pipelineModule(),
+        initScenePipelineModule(),
+      ]);
+
+      XR8.run({canvas: document.getElementById('camerafeed')});
+    };
+
+    window.XR8 ? onxrloaded() : window.addEventListener('xrloaded', onxrloaded);
+
+    // ── Enquiry form ──────────────────────────────────────
+    const enquireBtn   = document.getElementById('enquire-btn');
+    const sheetOverlay = document.getElementById('sheet-overlay');
+    const sheet        = document.getElementById('enquiry-sheet');
+    const formContent  = document.getElementById('form-content');
+    const thankYou     = document.getElementById('thank-you');
+    const enquiryForm  = document.getElementById('enquiry-form');
+    const nameInput    = document.getElementById('field-name');
+    const phoneInput   = document.getElementById('field-phone');
+    const emailInput   = document.getElementById('field-email');
+    const nameWrap     = document.getElementById('field-name-wrap');
+    const phoneWrap    = document.getElementById('field-phone-wrap');
+    const emailWrap    = document.getElementById('field-email-wrap');
+
+    const setError   = (w, v) => w.classList.toggle('error', v);
+    const validName  = () => nameInput.value.trim().length > 0;
+    const validPhone = () => /^[+\d][\d\s\-().]{6,}$/.test(phoneInput.value.trim());
+    const validEmail = () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value.trim());
+
+    nameInput.addEventListener('input',  () => { if (validName())  setError(nameWrap,  false); });
+    phoneInput.addEventListener('input', () => { if (validPhone()) setError(phoneWrap, false); });
+    emailInput.addEventListener('input', () => { if (validEmail()) setError(emailWrap, false); });
+
+    function openSheet()  { sheetOverlay.classList.add('open'); sheet.classList.add('open'); }
+    function closeSheet() {
+      sheet.classList.remove('open');
+      sheetOverlay.classList.remove('open');
+      setTimeout(() => {
+        enquiryForm.reset();
+        [nameWrap, phoneWrap, emailWrap].forEach(w => w.classList.remove('error'));
+        formContent.style.display = '';
+        thankYou.style.display    = 'none';
+      }, 350);
+    }
+
+    enquireBtn.addEventListener('click', openSheet);
+    sheetOverlay.addEventListener('click', closeSheet);
+
+    enquiryForm.addEventListener('submit', e => {
+      e.preventDefault();
+      const nOk = validName(), pOk = validPhone(), eOk = validEmail();
+      setError(nameWrap, !nOk); setError(phoneWrap, !pOk); setError(emailWrap, !eOk);
+      if (!nOk || !pOk || !eOk) {
+        enquiryForm.querySelector('.field.error')?.scrollIntoView({behavior: 'smooth', block: 'center'});
+        return;
+      }
+      formContent.style.display = 'none';
+      thankYou.style.display    = 'flex';
+      setTimeout(closeSheet, 2500);
+    });
+
+    // Prevent touches on the sheet and web panel reaching the AR canvas
+    sheet.addEventListener('touchstart',   e => e.stopPropagation(), {passive: true});
+    sheet.addEventListener('touchmove',    e => e.stopPropagation(), {passive: true});
+    webPanel.addEventListener('touchstart', e => e.stopPropagation(), {passive: true});
+    webPanel.addEventListener('touchmove',  e => e.stopPropagation(), {passive: true});
+  </script>
+</body>
+</html>
