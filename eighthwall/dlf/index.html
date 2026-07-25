@@ -16,13 +16,11 @@
     body { overflow: hidden; background: #000; }
     canvas { position: fixed; inset: 0; }
 
-    /* ── Loading spinner ──────────────────────────────── */
+    /* ── Model loading spinner ────────────────────────── */
     #model-loader {
-      position: fixed; inset: 0;
-      background: #000; z-index: 500;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
-      gap: 16px; color: white;
+      position: fixed; inset: 0; background: #000; z-index: 500;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 16px; color: white;
       font-family: Arial, sans-serif; font-size: 0.88rem; letter-spacing: 0.5px;
     }
     .spinner {
@@ -43,7 +41,7 @@
       pointer-events: none; white-space: nowrap; z-index: 100;
     }
 
-    /* ── Bottom controls ──────────────────────────────── */
+    /* ── Bottom controls (hidden until model placed) ──── */
     #controls {
       position: fixed; bottom: 24px; left: 50%;
       transform: translateX(-50%);
@@ -67,8 +65,7 @@
       cursor: pointer; white-space: nowrap;
       background: transparent; color: rgba(255,255,255,0.55);
       transition: background 0.2s, color 0.2s;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent; touch-action: manipulation;
     }
     .mode-btn.active { background: white; color: #000; }
 
@@ -79,46 +76,69 @@
       font-weight: bold; letter-spacing: 1px;
       padding: 14px 40px; border: none; border-radius: 32px;
       cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-      -webkit-tap-highlight-color: transparent;
-      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent; touch-action: manipulation;
     }
 
-    /* ── Floating website panel ───────────────────────── */
+    /* ── Website billboard panel ──────────────────────── */
     /*
-      Fixed to the screen (not billboard-projected) so the iframe is always
-      a comfortably large and stable surface the user can actually interact with.
-      Leaves room at the bottom for the toggle + enquire controls.
+      left / top / width / height are set by JS every frame so the panel
+      stays centred on the projected 3-D anchor as the user moves around.
+      opacity starts at 0 (invisible) until 'visible' class is added; JS
+      always calls updateWebPanel() before adding that class so there is
+      no initial-frame jump.
     */
     #web-panel {
       position: fixed;
-      left: 8px; right: 8px;
-      top: 8px;
-      bottom: 156px; /* clears the two-button control stack */
       display: flex; flex-direction: column;
       overflow: hidden; border-radius: 16px;
       border: 1.5px solid rgba(255,255,255,0.18);
       box-shadow: 0 8px 48px rgba(0,0,0,0.7),
                   0 0 0 1px rgba(255,255,255,0.06);
       opacity: 0; pointer-events: none;
-      transition: opacity 0.25s ease;
-      z-index: 150;
+      transition: opacity 0.25s ease; z-index: 150;
+      will-change: left, top, width, height;
     }
     #web-panel.visible { opacity: 1; pointer-events: auto; }
 
-    /* Slim brand strip at the top of the panel */
+    /* Slim brand strip */
     #web-header {
       display: flex; align-items: center;
       padding: 0 14px; height: 36px; flex-shrink: 0;
-      /* background set by JS from config */
     }
     #web-brand-name {
-      font-family: Arial, sans-serif;
-      font-size: 0.78rem; font-weight: 700;
-      color: white; letter-spacing: 1.5px; text-transform: uppercase;
+      font-family: Arial, sans-serif; font-size: 0.78rem;
+      font-weight: 700; color: white; letter-spacing: 1.5px; text-transform: uppercase;
     }
 
+    /* Content area: iframe + status overlay share the same space */
+    #web-content { flex: 1; position: relative; overflow: hidden; background: #fff; }
+
     #web-iframe {
-      flex: 1; width: 100%; border: none; background: #fff; display: block;
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      border: none; background: #fff;
+      opacity: 0; transition: opacity 0.3s ease;
+    }
+    #web-iframe.visible { opacity: 1; }
+
+    /* Status overlay shown while loading / on error */
+    #web-status {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 14px; padding: 28px; background: #fff;
+      z-index: 2; transition: opacity 0.3s ease;
+    }
+    #web-status.hidden { opacity: 0; pointer-events: none; }
+
+    .ws-icon  { font-size: 2.2rem; line-height: 1; }
+    .ws-title { font-family: Arial, sans-serif; font-size: 0.95rem; font-weight: 700; color: #111; text-align: center; }
+    .ws-sub   { font-family: Arial, sans-serif; font-size: 0.78rem; color: #888; text-align: center; line-height: 1.55; max-width: 260px; }
+    .ws-spinner {
+      width: 32px; height: 32px;
+      border: 3px solid rgba(0,0,0,0.12);
+      border-top-color: #555; border-radius: 50%;
+      animation: spin 0.8s linear infinite;
     }
 
     /* ── Enquiry bottom sheet ─────────────────────────── */
@@ -141,49 +161,32 @@
       width: 40px; height: 4px; background: #444;
       border-radius: 2px; margin: 0 auto 20px;
     }
-    #enquiry-sheet h2 {
-      font-family: Arial, sans-serif; font-size: 1.1rem;
-      color: white; margin-bottom: 4px;
-    }
-    #enquiry-sheet p.subtitle {
-      font-family: Arial, sans-serif; font-size: 0.82rem;
-      color: #888; margin-bottom: 24px;
-    }
+    #enquiry-sheet h2 { font-family: Arial, sans-serif; font-size: 1.1rem; color: white; margin-bottom: 4px; }
+    #enquiry-sheet p.subtitle { font-family: Arial, sans-serif; font-size: 0.82rem; color: #888; margin-bottom: 24px; }
 
     .field { margin-bottom: 16px; }
-    .field label {
-      display: block; font-family: Arial, sans-serif;
-      font-size: 0.78rem; color: #aaa;
-      margin-bottom: 6px; letter-spacing: 0.5px;
-    }
+    .field label { display: block; font-family: Arial, sans-serif; font-size: 0.78rem; color: #aaa; margin-bottom: 6px; letter-spacing: 0.5px; }
     .field input, .field textarea {
       width: 100%; background: #1e1e1e; border: 1px solid #2e2e2e;
-      border-radius: 10px; color: white;
-      font-family: Arial, sans-serif; font-size: 0.95rem;
-      padding: 12px 14px; outline: none;
-      -webkit-appearance: none; appearance: none;
-      transition: border-color 0.2s;
+      border-radius: 10px; color: white; font-family: Arial, sans-serif;
+      font-size: 0.95rem; padding: 12px 14px; outline: none;
+      -webkit-appearance: none; appearance: none; transition: border-color 0.2s;
     }
     .field input:focus, .field textarea:focus { border-color: #555; }
     .field textarea { resize: none; height: 96px; }
     .field.error input, .field.error textarea { border-color: #e05; }
-    .field .error-msg {
-      display: none; margin-top: 5px;
-      font-family: Arial, sans-serif; font-size: 0.75rem; color: #e05;
-    }
+    .field .error-msg { display: none; margin-top: 5px; font-family: Arial, sans-serif; font-size: 0.75rem; color: #e05; }
     .field.error .error-msg { display: block; }
 
     #submit-btn {
-      width: 100%; margin-top: 8px; padding: 15px;
-      background: white; color: #000;
+      width: 100%; margin-top: 8px; padding: 15px; background: white; color: #000;
       font-family: Arial, sans-serif; font-size: 0.95rem; font-weight: bold;
       border: none; border-radius: 12px; cursor: pointer; letter-spacing: 0.5px;
     }
 
     #thank-you {
-      display: none; flex-direction: column; align-items: center;
-      justify-content: center; padding: 24px 0 8px; gap: 12px;
-      color: white; font-family: Arial, sans-serif; text-align: center;
+      display: none; flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px 0 8px; gap: 12px; color: white; font-family: Arial, sans-serif; text-align: center;
     }
     #thank-you .check { font-size: 2.4rem; }
     #thank-you h3 { font-size: 1.1rem; margin: 0; }
@@ -209,14 +212,20 @@
     <button id="enquire-btn">Enquire Now</button>
   </div>
 
-  <!-- Large screen-filling website panel -->
+  <!-- Website panel — position/size driven by JS each frame -->
   <div id="web-panel">
     <div id="web-header">
       <span id="web-brand-name"></span>
     </div>
-    <iframe id="web-iframe" src=""
-      allow="camera; microphone"
-      sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+    <div id="web-content">
+      <iframe id="web-iframe" src=""
+        allow="camera; microphone"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+      <div id="web-status">
+        <div class="ws-spinner"></div>
+        <div class="ws-title">Loading&hellip;</div>
+      </div>
+    </div>
   </div>
 
   <!-- Enquiry bottom sheet -->
@@ -277,19 +286,158 @@
     document.getElementById('web-header').style.background = cfg.brand.primaryColor;
     document.getElementById('web-brand-name').textContent  = cfg.brand.name;
 
-    const webPanel   = document.getElementById('web-panel');
-    const webIframe  = document.getElementById('web-iframe');
+    const webPanel  = document.getElementById('web-panel');
+    const webIframe = document.getElementById('web-iframe');
+    const webStatus = document.getElementById('web-status');
     const controlsEl = document.getElementById('controls');
     const hintEl     = document.getElementById('hint');
 
-    const initScenePipelineModule = () => {
-      let model       = null;
-      let shadowPlane = null;
-      let placed      = false;
-      let isWebMode   = false;
-      let iframeLoaded = false;
+    // ── Website state machine ─────────────────────────────
+    /*
+      Detection strategy
+      ──────────────────
+      1. fetch HEAD (mode:'no-cors') — only throws on genuine network failure
+         (DNS error, no internet). A site that blocks via X-Frame-Options/CSP
+         still responds to the HTTP request, so the fetch succeeds.
 
-      // ── Mode toggle handlers ────────────────────────────
+      2. After iframe 'load', inspect contentDocument:
+         • Chrome / Safari: when X-Frame-Options blocks an iframe the browser
+           navigates it to about:blank, leaving contentDocument accessible but
+           with an empty body. A successfully-loaded cross-origin page returns
+           contentDocument === null (same-origin policy hides the document).
+         • Firefox: shows its own error page cross-origin → contentDocument
+           is null for both blocked and loaded; we fall through to 'loaded'
+           there (acceptable — mobile Firefox is a rare AR browser).
+    */
+    function setWebState(state) {
+      switch (state) {
+        case 'loading':
+          webStatus.innerHTML =
+            '<div class="ws-spinner"></div>' +
+            '<div class="ws-title">Loading…</div>';
+          webStatus.classList.remove('hidden');
+          webIframe.classList.remove('visible');
+          break;
+
+        case 'loaded':
+          webIframe.classList.add('visible');
+          webStatus.classList.add('hidden');
+          break;
+
+        case 'blocked':
+          webStatus.innerHTML =
+            '<div class="ws-icon">🔒</div>' +
+            '<div class="ws-title">Embedding not allowed</div>' +
+            '<div class="ws-sub">This website’s security policy ' +
+            '(<code>X-Frame-Options</code> or <code>Content-Security-Policy</code>) ' +
+            'prevents it from being displayed inside another app.</div>' +
+            '<div class="ws-sub" style="color:#bbb;font-size:0.72rem">' +
+            'To fix this the site owner must allow embedding, or supply a ' +
+            'dedicated URL without these headers (set <code>website.url</code> in config.js).</div>';
+          webStatus.classList.remove('hidden');
+          webIframe.classList.remove('visible');
+          break;
+
+        case 'unreachable':
+          webStatus.innerHTML =
+            '<div class="ws-icon">⚠️</div>' +
+            '<div class="ws-title">Can’t reach this website</div>' +
+            '<div class="ws-sub">The request to <strong>' +
+            new URL(cfg.website.url).hostname +
+            '</strong> failed. Check your internet connection.</div>';
+          webStatus.classList.remove('hidden');
+          webIframe.classList.remove('visible');
+          break;
+      }
+    }
+
+    async function loadWebsite() {
+      setWebState('loading');
+
+      // Step 1 — reachability: mode:'no-cors' only throws on network failure
+      try {
+        await fetch(cfg.website.url, { method: 'HEAD', mode: 'no-cors' });
+      } catch {
+        setWebState('unreachable');
+        return;
+      }
+
+      // Step 2 — load iframe, then check contentDocument after 'load' fires
+      webIframe.onload = () => {
+        webIframe.onload = null;
+        try {
+          const doc = webIframe.contentDocument;
+          if (doc !== null && doc.body.innerHTML.trim() === '') {
+            // about:blank → browser blocked the frame (Chrome / Safari)
+            setWebState('blocked');
+          } else {
+            // null → cross-origin loaded successfully (SOP hides document object)
+            // non-null with content → same-origin loaded
+            setWebState('loaded');
+          }
+        } catch {
+          setWebState('loaded'); // unexpected — assume loaded
+        }
+      };
+
+      webIframe.src = cfg.website.url;
+    }
+
+    // ── AR pipeline ───────────────────────────────────────
+    const initScenePipelineModule = () => {
+      let model          = null;
+      let shadowPlane    = null;
+      let billboardAnchor = null; // invisible world-space point used for screen projection
+      let cam            = null;
+      let placed         = false;
+      let isWebMode      = false;
+
+      // Pre-allocated — avoids per-frame GC pressure
+      const _tmp = new THREE.Vector3();
+
+      /*
+        Panel sizing strategy
+        ─────────────────────
+        • Width  = screen width minus a small horizontal margin (fills portrait screen)
+        • Height = fills the space above the bottom controls (toggle + enquire + padding)
+        • The panel is centred on the screen-space projection of billboardAnchor, so it
+          "follows" the AR placement as the user walks around.
+        • It is clamped to keep it fully on-screen and clear of the controls.
+
+        This gives a billboard that is always large enough to interact with the website
+        while still feeling anchored to the placed position in the world.
+      */
+      const MARGIN      = 8;
+      const CONTROLS_H  = 148; // approx height of toggle + gap + enquire + bottom padding
+
+      function updateWebPanel() {
+        if (!cam || !billboardAnchor) return;
+
+        const sw = window.innerWidth;
+        const sh = window.innerHeight;
+
+        // Desired panel dimensions (screen-space, portrait-friendly)
+        const panelW = sw - MARGIN * 2;
+        const panelH = sh - CONTROLS_H - MARGIN * 2;
+
+        // Project the 3-D anchor to screen coordinates
+        _tmp.copy(billboardAnchor.position).project(cam);
+        const cx = ( _tmp.x * 0.5 + 0.5) * sw;
+        const cy = (-_tmp.y * 0.5 + 0.5) * sh;
+
+        // Centre panel on projected point; clamp so it stays on-screen
+        // and never overlaps the controls at the bottom
+        const maxTop = sh - CONTROLS_H - panelH;
+        const left = Math.max(MARGIN, Math.min(cx - panelW / 2, sw - panelW - MARGIN));
+        const top  = Math.max(MARGIN, Math.min(cy - panelH / 2, Math.max(MARGIN, maxTop)));
+
+        webPanel.style.left   = left   + 'px';
+        webPanel.style.top    = top    + 'px';
+        webPanel.style.width  = panelW + 'px';
+        webPanel.style.height = panelH + 'px';
+      }
+
+      // ── Mode switch ──────────────────────────────────────
       document.getElementById('btn-model').addEventListener('click', () => {
         if (!isWebMode) return;
         isWebMode = false;
@@ -305,15 +453,20 @@
         document.getElementById('btn-web').classList.add('active');
         document.getElementById('btn-model').classList.remove('active');
         if (model) model.visible = false;
-        // Lazy-load iframe the first time the user switches to website mode
-        if (!iframeLoaded) {
-          webIframe.src = cfg.website.url;
-          iframeLoaded  = true;
-        }
+        // Position the panel at the correct world-anchored location BEFORE
+        // making it visible so there is no initial-frame jump
+        updateWebPanel();
         webPanel.classList.add('visible');
+        // Lazy-load the iframe on first switch
+        if (!webIframe.src || webIframe.src === window.location.href) {
+          loadWebsite();
+        }
       });
 
+      // ── Scene setup ──────────────────────────────────────
       const initXrScene = ({scene, camera, renderer}) => {
+        cam = camera;
+
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
 
@@ -337,6 +490,12 @@
         shadowPlane.receiveShadow = true;
         shadowPlane.visible = false;
         scene.add(shadowPlane);
+
+        // Invisible anchor positioned above the surface where the model sits.
+        // Its screen-space projection centres the website panel each frame.
+        billboardAnchor = new THREE.Object3D();
+        billboardAnchor.position.set(0, cfg.billboard.yCenter, 0);
+        scene.add(billboardAnchor);
 
         camera.position.set(0, 2, 2);
 
@@ -371,23 +530,23 @@
 
           canvas.addEventListener('touchstart', e => {
             if (e.touches.length !== 1 || !model) return;
-
-            // Recenter on every tap — moves the SLAM origin so the model
-            // and billboard always land on the tapped surface
+            // Every tap recenters: SLAM world origin snaps to the tapped surface
             XR8.XrController.recenter();
-
             if (!placed) {
-              // First tap: reveal the model and controls
               placed = true;
               shadowPlane.visible = true;
               hintEl.style.display = 'none';
               controlsEl.classList.add('visible');
             }
-
-            // In 3D mode keep the model visible at the new position;
-            // in website mode the panel stays open as-is
             if (!isWebMode) model.visible = true;
           }, {passive: true});
+        },
+
+        // Called after each rendered frame — camera matrices are fully current here
+        onRender: () => {
+          if (placed && isWebMode) {
+            updateWebPanel();
+          }
         },
       };
     };
