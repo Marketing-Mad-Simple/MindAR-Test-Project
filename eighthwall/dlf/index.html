@@ -417,7 +417,7 @@
           webStatus.innerHTML =
             '<div class="ws-icon">🔒</div>' +
             '<div class="ws-title">Embedding not allowed</div>' +
-            '<div class="ws-sub">This website's security policy ' +
+            '<div class="ws-sub">This website’s security policy ' +
             '(<code>X-Frame-Options</code> or <code>Content-Security-Policy</code>) ' +
             'prevents it from being displayed inside another app.</div>' +
             '<div class="ws-sub" style="color:#bbb;font-size:0.72rem">' +
@@ -430,7 +430,7 @@
         case 'unreachable':
           webStatus.innerHTML =
             '<div class="ws-icon">⚠️</div>' +
-            '<div class="ws-title">Can't reach this website</div>' +
+            '<div class="ws-title">Can’t reach this website</div>' +
             '<div class="ws-sub">The request to <strong>' +
             new URL(cfg.website.url).hostname +
             '</strong> failed. Check your internet connection.</div>';
