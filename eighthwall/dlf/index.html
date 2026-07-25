@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DLF — AR Experience</title>
 
-  <!-- Brand config must load before the module script -->
   <script src="config.js"></script>
 
   <script src="https://cdn.jsdelivr.net/npm/@8thwall/engine-binary@1/dist/xr.js" async crossorigin="anonymous" data-preload-chunks="slam"></script>
@@ -44,7 +43,7 @@
       pointer-events: none; white-space: nowrap; z-index: 100;
     }
 
-    /* ── Bottom controls (hidden until model is placed) ─ */
+    /* ── Bottom controls ──────────────────────────────── */
     #controls {
       position: fixed; bottom: 24px; left: 50%;
       transform: translateX(-50%);
@@ -86,45 +85,40 @@
 
     /* ── Floating website panel ───────────────────────── */
     /*
-      Positioned (left/top/width/height) by JS every frame
-      so it covers the projected billboard area.
-      pointer-events off until visible so touches fall through to canvas.
+      Fixed to the screen (not billboard-projected) so the iframe is always
+      a comfortably large and stable surface the user can actually interact with.
+      Leaves room at the bottom for the toggle + enquire controls.
     */
     #web-panel {
-      position: fixed; left: 0; top: 0;
+      position: fixed;
+      left: 8px; right: 8px;
+      top: 8px;
+      bottom: 156px; /* clears the two-button control stack */
       display: flex; flex-direction: column;
-      overflow: hidden; border-radius: 12px;
+      overflow: hidden; border-radius: 16px;
       border: 1.5px solid rgba(255,255,255,0.18);
       box-shadow: 0 8px 48px rgba(0,0,0,0.7),
                   0 0 0 1px rgba(255,255,255,0.06);
       opacity: 0; pointer-events: none;
       transition: opacity 0.25s ease;
       z-index: 150;
-      will-change: transform, left, top, width, height;
     }
     #web-panel.visible { opacity: 1; pointer-events: auto; }
 
+    /* Slim brand strip at the top of the panel */
     #web-header {
       display: flex; align-items: center;
-      padding: 8px 10px; gap: 8px; flex-shrink: 0;
+      padding: 0 14px; height: 36px; flex-shrink: 0;
       /* background set by JS from config */
     }
     #web-brand-name {
-      flex: 1; font-family: Arial, sans-serif;
-      font-size: 0.8rem; font-weight: 700;
+      font-family: Arial, sans-serif;
+      font-size: 0.78rem; font-weight: 700;
       color: white; letter-spacing: 1.5px; text-transform: uppercase;
     }
-    #web-open-btn {
-      font-family: Arial, sans-serif; font-size: 0.7rem;
-      color: rgba(255,255,255,0.75); text-decoration: none;
-      padding: 4px 10px; border-radius: 999px;
-      border: 1px solid rgba(255,255,255,0.28);
-      white-space: nowrap;
-      -webkit-tap-highlight-color: transparent;
-    }
+
     #web-iframe {
-      flex: 1; width: 100%; border: none; background: #fff;
-      display: block;
+      flex: 1; width: 100%; border: none; background: #fff; display: block;
     }
 
     /* ── Enquiry bottom sheet ─────────────────────────── */
@@ -207,7 +201,6 @@
 
   <div id="hint">Tap a surface to place the model</div>
 
-  <!-- Shown after first placement -->
   <div id="controls">
     <div id="mode-toggle">
       <button class="mode-btn active" id="btn-model">3D Model</button>
@@ -216,11 +209,10 @@
     <button id="enquire-btn">Enquire Now</button>
   </div>
 
-  <!-- Floating website billboard panel — JS positions this each frame -->
+  <!-- Large screen-filling website panel -->
   <div id="web-panel">
     <div id="web-header">
       <span id="web-brand-name"></span>
-      <a id="web-open-btn" href="#" target="_blank" rel="noopener noreferrer">Open ↗</a>
     </div>
     <iframe id="web-iframe" src=""
       allow="camera; microphone"
@@ -282,77 +274,22 @@
 
     const cfg = window.XR_CONFIG;
 
-    // ── Apply brand to web panel ──────────────────────────
     document.getElementById('web-header').style.background = cfg.brand.primaryColor;
     document.getElementById('web-brand-name').textContent  = cfg.brand.name;
-    document.getElementById('web-open-btn').href           = cfg.website.url;
 
     const webPanel   = document.getElementById('web-panel');
     const webIframe  = document.getElementById('web-iframe');
     const controlsEl = document.getElementById('controls');
     const hintEl     = document.getElementById('hint');
 
-    const BB_W = cfg.billboard.width;
-    const BB_H = cfg.billboard.height;
-    const BB_Y = cfg.billboard.yCenter;
-
-    // ── AR scene pipeline module ──────────────────────────
     const initScenePipelineModule = () => {
-      let model          = null;
-      let billboardAnchor = null;  // invisible THREE.Object3D — anchor for projection
-      let shadowPlane    = null;
-      let cam            = null;
-      let placed         = false;
-      let isWebMode      = false;
-      let iframeLoaded   = false;
+      let model       = null;
+      let shadowPlane = null;
+      let placed      = false;
+      let isWebMode   = false;
+      let iframeLoaded = false;
 
-      // Pre-allocated temp vectors — avoids GC pressure in the render loop
-      const _c = new THREE.Vector3();
-      const _r = new THREE.Vector3();
-      const _t = new THREE.Vector3();
-
-      // Projects a world-space Vector3 to { x, y } screen pixels
-      function toScreen(v) {
-        return {
-          x: ( v.x * 0.5 + 0.5) * window.innerWidth,
-          y: (-v.y * 0.5 + 0.5) * window.innerHeight,
-        };
-      }
-
-      /*
-        Every frame (onRender) we treat the billboard as a camera-facing plane
-        of BB_W × BB_H world units centred at billboardAnchor.position.
-        We derive its right and top world-space offsets by rotating the unit
-        axes by the camera quaternion (pure billboard), project the three
-        characteristic points (centre, right-edge, top-edge) to screen space,
-        and drive the web-panel div to exactly cover the result.
-      */
-      function updateWebPanel() {
-        if (!cam || !billboardAnchor) return;
-
-        const quat = cam.quaternion;
-        const pos  = billboardAnchor.position;
-
-        // Centre
-        _c.copy(pos).project(cam);
-        const cx = toScreen(_c).x;
-        const cy = toScreen(_c).y;
-
-        // Right-edge midpoint (billboard faces camera → use cam quaternion)
-        _r.set(BB_W / 2, 0, 0).applyQuaternion(quat).add(pos).project(cam);
-        const shw = Math.abs(toScreen(_r).x - cx);
-
-        // Top-edge midpoint
-        _t.set(0, BB_H / 2, 0).applyQuaternion(quat).add(pos).project(cam);
-        const shh = Math.abs(toScreen(_t).y - cy);
-
-        webPanel.style.left   = (cx - shw) + 'px';
-        webPanel.style.top    = (cy - shh) + 'px';
-        webPanel.style.width  = (shw * 2)  + 'px';
-        webPanel.style.height = (shh * 2)  + 'px';
-      }
-
-      // ── Mode switch handlers ────────────────────────────
+      // ── Mode toggle handlers ────────────────────────────
       document.getElementById('btn-model').addEventListener('click', () => {
         if (!isWebMode) return;
         isWebMode = false;
@@ -368,7 +305,7 @@
         document.getElementById('btn-web').classList.add('active');
         document.getElementById('btn-model').classList.remove('active');
         if (model) model.visible = false;
-        // Lazy-load the iframe on first switch to website mode
+        // Lazy-load iframe the first time the user switches to website mode
         if (!iframeLoaded) {
           webIframe.src = cfg.website.url;
           iframeLoaded  = true;
@@ -376,10 +313,7 @@
         webPanel.classList.add('visible');
       });
 
-      // ── Scene setup ─────────────────────────────────────
       const initXrScene = ({scene, camera, renderer}) => {
-        cam = camera;
-
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
 
@@ -388,7 +322,7 @@
         const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
         dirLight.position.set(5, 10, 7);
         dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width  = dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.mapSize.width = dirLight.shadow.mapSize.height = 2048;
         dirLight.shadow.normalBias = 0.05;
         dirLight.shadow.bias       = -0.001;
         scene.add(dirLight);
@@ -397,18 +331,12 @@
         fillLight.position.set(-3, 5, -4);
         scene.add(fillLight);
 
-        // Invisible shadow-receiver plane
         const planeGeo = new THREE.PlaneGeometry(2000, 2000);
         planeGeo.rotateX(-Math.PI / 2);
         shadowPlane = new THREE.Mesh(planeGeo, new THREE.ShadowMaterial({opacity: 0.4}));
         shadowPlane.receiveShadow = true;
         shadowPlane.visible = false;
         scene.add(shadowPlane);
-
-        // Billboard anchor — purely for projection maths, no visible geometry
-        billboardAnchor = new THREE.Object3D();
-        billboardAnchor.position.set(0, BB_Y, 0);
-        scene.add(billboardAnchor);
 
         camera.position.set(0, 2, 2);
 
@@ -442,22 +370,24 @@
           });
 
           canvas.addEventListener('touchstart', e => {
-            // Only handle the very first tap (before model is placed)
-            if (e.touches.length !== 1 || !model || placed) return;
-            XR8.XrController.recenter();
-            placed = true;
-            model.visible       = true;
-            shadowPlane.visible = true;
-            hintEl.style.display = 'none';
-            controlsEl.classList.add('visible');
-          }, {passive: true});
-        },
+            if (e.touches.length !== 1 || !model) return;
 
-        // Called after each frame is rendered — camera matrices are fully updated here
-        onRender: () => {
-          if (placed && isWebMode) {
-            updateWebPanel();
-          }
+            // Recenter on every tap — moves the SLAM origin so the model
+            // and billboard always land on the tapped surface
+            XR8.XrController.recenter();
+
+            if (!placed) {
+              // First tap: reveal the model and controls
+              placed = true;
+              shadowPlane.visible = true;
+              hintEl.style.display = 'none';
+              controlsEl.classList.add('visible');
+            }
+
+            // In 3D mode keep the model visible at the new position;
+            // in website mode the panel stays open as-is
+            if (!isWebMode) model.visible = true;
+          }, {passive: true});
         },
       };
     };
@@ -530,9 +460,8 @@
       setTimeout(closeSheet, 2500);
     });
 
-    // Prevent touches on the sheet and web panel reaching the AR canvas
-    sheet.addEventListener('touchstart',   e => e.stopPropagation(), {passive: true});
-    sheet.addEventListener('touchmove',    e => e.stopPropagation(), {passive: true});
+    sheet.addEventListener('touchstart',    e => e.stopPropagation(), {passive: true});
+    sheet.addEventListener('touchmove',     e => e.stopPropagation(), {passive: true});
     webPanel.addEventListener('touchstart', e => e.stopPropagation(), {passive: true});
     webPanel.addEventListener('touchmove',  e => e.stopPropagation(), {passive: true});
   </script>
