@@ -14,9 +14,9 @@ window.XR_CONFIG = {
   // Virtual billboard dimensions (world units ≈ metres).
   // yCenter = height of the billboard's centre above the floor.
   billboard: {
-    width:   0.55,
-    height:  0.78,   // ~1.42 aspect (portrait)
-    yCenter: 0.39,   // bottom sits at y = 0 (floor level)
+    width:   0.8,    // world units (metres) — adjust to taste
+    height:  1.2,    // portrait aspect, bottom at floor y=0, top at 1.2 m
+    yCenter: 0.6,    // half of height so bottom rests on the surface
   },
 
   website: {
