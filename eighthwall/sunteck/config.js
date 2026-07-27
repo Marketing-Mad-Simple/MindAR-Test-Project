@@ -24,7 +24,11 @@ window.XR_CONFIG = {
   },
 
   brochure: {
-    path: 'brochures/Sunteck-Brochure.pdf',
+    path:  'brochures/Sunteck-Brochure.pdf',
+    // Page scale relative to panel width.
+    // 1.0 = fill panel width exactly (page fits without scrolling if portrait).
+    // Increase (e.g. 1.4) to zoom in — page becomes scrollable vertically.
+    scale: 1.4,
   },
 
   enquiry: {

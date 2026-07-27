@@ -192,19 +192,23 @@
     #brochure-status.hidden { display: none; }
     #brochure-status .ws-title { color: #ddd; }
 
-    /* Scrollable page area — leaves 64 px at the bottom for the nav bar */
+    /* Page area — overflow hidden; pan/zoom is handled entirely via JS transform */
     #brochure-page-wrap {
       position: absolute;
       top: 0; left: 0; right: 0; bottom: 64px;
-      overflow: auto;
+      overflow: hidden;
       display: flex; align-items: center; justify-content: center;
-      -webkit-overflow-scrolling: touch;
+      touch-action: none;
     }
-    /* Width/height set by JS each render to the exact contain-fit size */
+    /* Width/height set by JS per render; transform driven by pan/zoom handlers */
     #brochure-canvas {
       display: block; flex-shrink: 0;
-      touch-action: pan-y pan-x;
+      transform-origin: center center;
+      will-change: transform;
+      touch-action: none;
+      cursor: grab;
     }
+    #brochure-canvas:active { cursor: grabbing; }
 
     /* Nav bar pinned to the bottom of the panel */
     #brochure-nav {
@@ -746,25 +750,28 @@
       const vp0  = page.getViewport({ scale: 1 });
       const dpr  = window.devicePixelRatio || 1;
 
-      // Contain-fit: scale so the page fills whichever dimension is tighter,
-      // exactly like CSS object-fit:contain — works for any brochure aspect ratio.
-      const wrapW  = wrap.clientWidth  || window.innerWidth;
-      const wrapH  = wrap.clientHeight || window.innerHeight;
-      const scale  = Math.min(wrapW / vp0.width, wrapH / vp0.height);
+      // Scale = (panel width / page width) × config multiplier.
+      // At 1.0 the page fills the panel width exactly and fits without scrolling
+      // (for portrait pages). Increase in config to zoom in — page scrolls vertically.
+      const wrapW   = wrap.clientWidth || window.innerWidth;
+      const scale   = (wrapW / vp0.width) * (cfg.brochure.scale || 1.0);
 
-      // Render at full device-pixel-ratio resolution for sharp text on hi-DPI screens.
+      // Render at full DPR resolution so text is sharp on Retina screens.
       const viewport = page.getViewport({ scale: scale * dpr });
       brochureCanvas.width  = viewport.width;
       brochureCanvas.height = viewport.height;
 
-      // CSS size = logical pixels (without DPR) so canvas maps 1:1 to the fit area.
+      // CSS display size in logical pixels — canvas resolution accounts for DPR.
       brochureCanvas.style.width  = Math.round(vp0.width  * scale) + 'px';
       brochureCanvas.style.height = Math.round(vp0.height * scale) + 'px';
+
+      // Reset pan/zoom for every new page so it starts centred and unzoomed
+      pz.scale = 1; pz.tx = 0; pz.ty = 0;
+      brochureCanvas.style.transform = '';
 
       const ctx = brochureCanvas.getContext('2d');
       await page.render({ canvasContext: ctx, viewport }).promise;
 
-      wrap.scrollTop = 0;
       pdfRendering = false;
     }
 
@@ -774,6 +781,74 @@
     brochureNext.addEventListener('click', () => {
       if (pdfDoc && pdfPage < pdfDoc.numPages) renderPdfPage(pdfPage + 1);
     });
+
+    // ── Brochure pan & zoom ───────────────────────────────
+    // Single finger  → drag / pan
+    // Two fingers    → pinch to zoom (zoom origin = pinch midpoint)
+    // Double-tap     → reset to default position & scale
+    const pz = { scale: 1, tx: 0, ty: 0 };
+    let _pzPrev   = null; // last single-touch { x, y }
+    let _pzPinch  = null; // pinch start state
+    let _pzDtap   = 0;    // timestamp of last tap (double-tap detection)
+
+    function _pzApply() {
+      brochureCanvas.style.transform =
+        `translate(${pz.tx}px,${pz.ty}px) scale(${pz.scale})`;
+    }
+    function _pzReset() {
+      pz.scale = 1; pz.tx = 0; pz.ty = 0; _pzApply();
+    }
+    function _pinchDist(t0, t1) {
+      const dx = t0.clientX - t1.clientX, dy = t0.clientY - t1.clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    const brocWrap = document.getElementById('brochure-page-wrap');
+
+    brocWrap.addEventListener('touchstart', e => {
+      e.stopPropagation();
+      if (e.touches.length === 1) {
+        _pzPrev  = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        _pzPinch = null;
+        // Double-tap: reset pan & zoom
+        const now = Date.now();
+        if (now - _pzDtap < 280) { _pzReset(); _pzDtap = 0; }
+        else _pzDtap = now;
+      } else if (e.touches.length === 2) {
+        _pzPrev  = null;
+        _pzPinch = {
+          dist:  _pinchDist(e.touches[0], e.touches[1]),
+          scale: pz.scale,
+          mx: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          my: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+          tx: pz.tx, ty: pz.ty,
+        };
+      }
+    }, { passive: true });
+
+    brocWrap.addEventListener('touchmove', e => {
+      e.stopPropagation(); e.preventDefault(); // block AR canvas underneath
+      if (e.touches.length === 1 && _pzPrev) {
+        pz.tx += e.touches[0].clientX - _pzPrev.x;
+        pz.ty += e.touches[0].clientY - _pzPrev.y;
+        _pzPrev = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        _pzApply();
+      } else if (e.touches.length === 2 && _pzPinch) {
+        const d   = _pinchDist(e.touches[0], e.touches[1]);
+        const mx  = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const my  = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        pz.scale  = Math.max(0.5, Math.min(6, _pzPinch.scale * d / _pzPinch.dist));
+        pz.tx     = _pzPinch.tx + (mx - _pzPinch.mx);
+        pz.ty     = _pzPinch.ty + (my - _pzPinch.my);
+        _pzApply();
+      }
+    }, { passive: false });
+
+    brocWrap.addEventListener('touchend', e => {
+      e.stopPropagation();
+      if (e.touches.length < 2) _pzPinch = null;
+      if (e.touches.length === 0) _pzPrev = null;
+    }, { passive: true });
 
     // ── AR pipeline ───────────────────────────────────────
     const initScenePipelineModule = () => {
