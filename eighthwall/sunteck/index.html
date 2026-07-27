@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DLF — AR Experience</title>
+  <title id="page-title">AR Experience</title>
 
   <script src="config.js"></script>
 
@@ -196,13 +196,14 @@
     #brochure-page-wrap {
       position: absolute;
       top: 0; left: 0; right: 0; bottom: 64px;
-      overflow-y: auto;
-      display: flex; align-items: flex-start; justify-content: center;
+      overflow: auto;
+      display: flex; align-items: center; justify-content: center;
       -webkit-overflow-scrolling: touch;
     }
+    /* Width/height set by JS each render to the exact contain-fit size */
     #brochure-canvas {
-      display: block; width: 100%; height: auto;
-      touch-action: pan-y;
+      display: block; flex-shrink: 0;
+      touch-action: pan-y pan-x;
     }
 
     /* Nav bar pinned to the bottom of the panel */
@@ -520,6 +521,7 @@
     // Populate loader and panel text from config
     document.getElementById('loader-brand').textContent   = cfg.brand.name;
     document.getElementById('loader-tagline').textContent = cfg.brand.tagline;
+    document.getElementById('page-title').textContent     = cfg.brand.name + ' — AR Experience';
     document.getElementById('web-header').style.background = cfg.brand.primaryColor;
     document.getElementById('web-brand-name').textContent  = cfg.brand.name;
 
@@ -739,17 +741,25 @@
       brochurePrev.disabled = num <= 1;
       brochureNext.disabled = num >= pdfDoc.numPages;
 
-      const page      = await pdfDoc.getPage(num);
-      const wrap      = document.getElementById('brochure-page-wrap');
-      // Render at 2× device pixel ratio for crisp text on hi-DPI screens.
-      // CSS width:100% on the canvas scales it to fit the container.
-      const dpr       = window.devicePixelRatio || 1;
-      const cssWidth  = wrap.clientWidth || window.innerWidth;
-      const scale     = (cssWidth * dpr) / page.getViewport({ scale: 1 }).width;
-      const viewport  = page.getViewport({ scale });
+      const page = await pdfDoc.getPage(num);
+      const wrap = document.getElementById('brochure-page-wrap');
+      const vp0  = page.getViewport({ scale: 1 });
+      const dpr  = window.devicePixelRatio || 1;
 
+      // Contain-fit: scale so the page fills whichever dimension is tighter,
+      // exactly like CSS object-fit:contain — works for any brochure aspect ratio.
+      const wrapW  = wrap.clientWidth  || window.innerWidth;
+      const wrapH  = wrap.clientHeight || window.innerHeight;
+      const scale  = Math.min(wrapW / vp0.width, wrapH / vp0.height);
+
+      // Render at full device-pixel-ratio resolution for sharp text on hi-DPI screens.
+      const viewport = page.getViewport({ scale: scale * dpr });
       brochureCanvas.width  = viewport.width;
       brochureCanvas.height = viewport.height;
+
+      // CSS size = logical pixels (without DPR) so canvas maps 1:1 to the fit area.
+      brochureCanvas.style.width  = Math.round(vp0.width  * scale) + 'px';
+      brochureCanvas.style.height = Math.round(vp0.height * scale) + 'px';
 
       const ctx = brochureCanvas.getContext('2d');
       await page.render({ canvasContext: ctx, viewport }).promise;
