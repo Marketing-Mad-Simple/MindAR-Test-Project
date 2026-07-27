@@ -143,10 +143,14 @@
     }
 
     /* ── Brochure content ─────────────────────────────── */
+    /*
+      Uses absolute positioning throughout so the nav bar is always anchored
+      to the bottom of the panel regardless of canvas height or flex quirks.
+    */
     #brochure-content {
       display: none; flex: 1;
-      flex-direction: column; overflow: hidden;
-      background: #1c1c1c; position: relative;
+      position: relative; overflow: hidden;
+      background: #1c1c1c;
     }
 
     #brochure-status {
@@ -159,36 +163,31 @@
     #brochure-status.hidden { display: none; }
     #brochure-status .ws-title { color: #ddd; }
 
-    #brochure-gallery {
-      display: none; flex: 1;
-      flex-direction: column; overflow: hidden;
-    }
-    #brochure-gallery.visible { display: flex; }
-
-    /* Scrollable page area */
+    /* Scrollable page area — leaves 52 px at the bottom for the nav bar */
     #brochure-page-wrap {
-      flex: 1; overflow: auto;
-      display: flex; align-items: flex-start;
-      justify-content: center;
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 52px;
+      overflow-y: auto;
+      display: flex; align-items: flex-start; justify-content: center;
       -webkit-overflow-scrolling: touch;
     }
     #brochure-canvas {
-      display: block;
-      max-width: 100%;
-      height: auto;
+      display: block; width: 100%; height: auto;
       touch-action: pan-y;
     }
 
-    /* Nav bar */
+    /* Nav bar pinned to the bottom of the panel */
     #brochure-nav {
+      position: absolute;
+      bottom: 0; left: 0; right: 0; height: 52px;
       display: flex; align-items: center; justify-content: center;
-      gap: 20px; padding: 10px 16px; flex-shrink: 0;
+      gap: 20px; padding: 0 16px;
       background: #111; border-top: 1px solid rgba(255,255,255,0.08);
     }
     .brochure-nav-btn {
       background: rgba(255,255,255,0.1); border: none;
       color: white; font-size: 1.4rem; line-height: 1;
-      width: 36px; height: 36px; border-radius: 50%;
+      width: 40px; height: 40px; border-radius: 50%;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       -webkit-tap-highlight-color: transparent; touch-action: manipulation;
       transition: background 0.15s;
@@ -296,15 +295,13 @@
         <div class="ws-spinner"></div>
         <div class="ws-title">Loading brochure&hellip;</div>
       </div>
-      <div id="brochure-gallery">
-        <div id="brochure-page-wrap">
-          <canvas id="brochure-canvas"></canvas>
-        </div>
-        <div id="brochure-nav">
-          <button class="brochure-nav-btn" id="brochure-prev" disabled>&#8249;</button>
-          <span id="brochure-page-label">— / —</span>
-          <button class="brochure-nav-btn" id="brochure-next" disabled>&#8250;</button>
-        </div>
+      <div id="brochure-page-wrap">
+        <canvas id="brochure-canvas"></canvas>
+      </div>
+      <div id="brochure-nav">
+        <button class="brochure-nav-btn" id="brochure-prev" disabled>&#8249;</button>
+        <span id="brochure-page-label">— / —</span>
+        <button class="brochure-nav-btn" id="brochure-next" disabled>&#8250;</button>
       </div>
     </div>
   </div>
@@ -373,7 +370,6 @@
     const webStatus      = document.getElementById('web-status');
     const brochureContent = document.getElementById('brochure-content');
     const brochureStatus  = document.getElementById('brochure-status');
-    const brochureGallery = document.getElementById('brochure-gallery');
     const brochureCanvas  = document.getElementById('brochure-canvas');
     const brochureLabel   = document.getElementById('brochure-page-label');
     const brochurePrev    = document.getElementById('brochure-prev');
@@ -496,7 +492,6 @@
 
         brochureLabel.textContent = `1 / ${pdfDoc.numPages}`;
         brochureStatus.classList.add('hidden');
-        brochureGallery.classList.add('visible');
         brochurePrev.disabled = true;
         brochureNext.disabled = pdfDoc.numPages <= 1;
 
@@ -517,10 +512,14 @@
       brochurePrev.disabled = num <= 1;
       brochureNext.disabled = num >= pdfDoc.numPages;
 
-      const page     = await pdfDoc.getPage(num);
-      const wrap     = document.getElementById('brochure-page-wrap');
-      const scale    = wrap.clientWidth / page.getViewport({ scale: 1 }).width;
-      const viewport = page.getViewport({ scale });
+      const page      = await pdfDoc.getPage(num);
+      const wrap      = document.getElementById('brochure-page-wrap');
+      // Render at 2× device pixel ratio for crisp text on hi-DPI screens.
+      // CSS width:100% on the canvas scales it to fit the container.
+      const dpr       = window.devicePixelRatio || 1;
+      const cssWidth  = wrap.clientWidth || window.innerWidth;
+      const scale     = (cssWidth * dpr) / page.getViewport({ scale: 1 }).width;
+      const viewport  = page.getViewport({ scale });
 
       brochureCanvas.width  = viewport.width;
       brochureCanvas.height = viewport.height;
@@ -528,7 +527,6 @@
       const ctx = brochureCanvas.getContext('2d');
       await page.render({ canvasContext: ctx, viewport }).promise;
 
-      // Scroll the page area back to top on page change
       wrap.scrollTop = 0;
       pdfRendering = false;
     }
