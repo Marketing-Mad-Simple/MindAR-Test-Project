@@ -631,8 +631,20 @@
         webContent.style.display      = isWeb ? '' : 'none';
         brochureContent.style.display = isWeb ? 'none' : 'flex';
 
-        // Position before making visible to avoid jump
-        updateBillboardPanel();
+        if (isWeb) {
+          // Website: position on the world-anchored billboard before revealing
+          updateBillboardPanel();
+        } else {
+          // Brochure: fixed to screen so the user can read without the panel
+          // drifting as they move the camera. Leaves room for the bottom controls.
+          const margin = 8;
+          const bottomClearance = 164;
+          webPanel.style.left   = margin + 'px';
+          webPanel.style.top    = margin + 'px';
+          webPanel.style.width  = (window.innerWidth  - margin * 2) + 'px';
+          webPanel.style.height = (window.innerHeight - margin - bottomClearance) + 'px';
+        }
+
         webPanel.classList.add('visible');
       }
 
@@ -762,7 +774,8 @@
           if (!placed || !billboardAnchor) return;
           // Keep the billboard anchor facing the camera (used for projection math)
           billboardAnchor.quaternion.copy(cam.quaternion);
-          if (mode !== 'model') updateBillboardPanel();
+          // Only website mode tracks the world anchor — brochure stays screen-fixed
+          if (mode === 'web') updateBillboardPanel();
         },
       };
     };
