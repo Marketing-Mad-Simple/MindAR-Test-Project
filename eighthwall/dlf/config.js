@@ -20,10 +20,11 @@ window.XR_CONFIG = {
   },
 
   website: {
-    // Swap back to the real site URL once the client provides an embeddable page.
-    // Most production sites block iframes via X-Frame-Options — Wikipedia is used
-    // here to verify the panel itself works before chasing the embedding issue.
-    url: 'https://en.m.wikipedia.org/wiki/DLF_Limited',
+    url: 'https://www.sunteckindia.com/',
+  },
+
+  brochure: {
+    path: 'brochures/Imperial-Residences-Brochure.pdf',
   },
 
   enquiry: {
