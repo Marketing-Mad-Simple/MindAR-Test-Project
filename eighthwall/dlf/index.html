@@ -27,7 +27,7 @@
     }
     #loader-brand {
       font-size: 2rem; font-weight: 700; letter-spacing: 8px;
-      color: #c9a84c; text-transform: uppercase;
+      color: var(--accent); text-transform: uppercase;
     }
     #loader-tagline {
       font-size: 0.68rem; letter-spacing: 3.5px; text-transform: uppercase;
@@ -40,7 +40,7 @@
     }
     #progress-fill {
       height: 100%; width: 0%;
-      background: #c9a84c; border-radius: 1px;
+      background: var(--accent); border-radius: 1px;
       transition: width 0.2s ease;
     }
     #progress-label {
@@ -92,8 +92,8 @@
       -webkit-tap-highlight-color: transparent; touch-action: manipulation;
     }
     .mode-btn.active {
-      background: #c9a84c; color: #1c1000;
-      box-shadow: 0 2px 10px rgba(201,168,76,0.35);
+      background: var(--accent); color: var(--on-accent);
+      box-shadow: 0 2px 10px rgba(var(--accent-rgb),0.35);
     }
 
     /* ── Enquire button ───────────────────────────────── */
@@ -137,7 +137,7 @@
     }
     #web-brand-name {
       font-family: Arial, sans-serif; font-size: 0.82rem;
-      font-weight: 800; color: #c9a84c; letter-spacing: 2.5px; text-transform: uppercase;
+      font-weight: 800; color: var(--accent); letter-spacing: 2.5px; text-transform: uppercase;
     }
 
     /* ── Website content ─────────────────────────────── */
@@ -214,17 +214,17 @@
       background: #0e0e0e; border-top: 1px solid rgba(255,255,255,0.07);
     }
     .brochure-nav-btn {
-      background: rgba(201,168,76,0.12);
-      border: 1px solid rgba(201,168,76,0.28);
-      color: #c9a84c; font-size: 1.5rem; line-height: 1;
+      background: rgba(var(--accent-rgb),0.12);
+      border: 1px solid rgba(var(--accent-rgb),0.28);
+      color: var(--accent); font-size: 1.5rem; line-height: 1;
       width: 48px; height: 48px; border-radius: 14px;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       -webkit-tap-highlight-color: transparent; touch-action: manipulation;
       transition: background 0.15s, border-color 0.15s;
     }
     .brochure-nav-btn:active  {
-      background: rgba(201,168,76,0.28);
-      border-color: rgba(201,168,76,0.6);
+      background: rgba(var(--accent-rgb),0.28);
+      border-color: rgba(var(--accent-rgb),0.6);
     }
     .brochure-nav-btn:disabled { opacity: 0.22; pointer-events: none; }
 
@@ -271,11 +271,11 @@
     .field.error .error-msg { display: block; }
 
     #submit-btn {
-      width: 100%; margin-top: 8px; padding: 17px; background: #c9a84c; color: #1c1000;
+      width: 100%; margin-top: 8px; padding: 17px; background: var(--accent); color: var(--on-accent);
       font-family: Arial, sans-serif; font-size: 0.9rem; font-weight: 800;
       letter-spacing: 2px; text-transform: uppercase;
       border: none; border-radius: 14px; cursor: pointer;
-      box-shadow: 0 4px 20px rgba(201,168,76,0.3);
+      box-shadow: 0 4px 20px rgba(var(--accent-rgb),0.3);
     }
 
     #thank-you {
@@ -351,8 +351,8 @@
   </div>
 
   <div id="model-loader">
-    <div id="loader-brand">DLF</div>
-    <div id="loader-tagline">Luxury Residences</div>
+    <div id="loader-brand"></div>
+    <div id="loader-tagline"></div>
     <div class="progress-track">
       <div id="progress-fill"></div>
     </div>
@@ -503,6 +503,23 @@
 
     const cfg = window.XR_CONFIG;
 
+    // Inject brand colors as CSS variables so every accent in the stylesheet
+    // automatically reflects the active brand — no other JS or CSS changes needed.
+    ;(function () {
+      const hex = cfg.brand.accentColor.replace('#','');
+      const r = parseInt(hex.slice(0,2),16);
+      const g = parseInt(hex.slice(2,4),16);
+      const b = parseInt(hex.slice(4,6),16);
+      const root = document.documentElement;
+      root.style.setProperty('--accent',     cfg.brand.accentColor);
+      root.style.setProperty('--accent-rgb', `${r},${g},${b}`);
+      root.style.setProperty('--on-accent',  '#111');
+      root.style.setProperty('--primary',    cfg.brand.primaryColor);
+    })();
+
+    // Populate loader and panel text from config
+    document.getElementById('loader-brand').textContent   = cfg.brand.name;
+    document.getElementById('loader-tagline').textContent = cfg.brand.tagline;
     document.getElementById('web-header').style.background = cfg.brand.primaryColor;
     document.getElementById('web-brand-name').textContent  = cfg.brand.name;
 
