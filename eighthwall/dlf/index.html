@@ -51,49 +51,60 @@
 
     /* ── Placement hint ───────────────────────────────── */
     #hint {
-      position: fixed; bottom: 40px; left: 50%;
+      position: fixed; bottom: 48px; left: 50%;
       transform: translateX(-50%);
-      background: rgba(0,0,0,0.6); color: white;
-      font-family: Arial, sans-serif; font-size: 0.88rem;
-      padding: 10px 22px; border-radius: 999px;
+      background: rgba(10,8,5,0.72); color: rgba(255,255,255,0.8);
+      font-family: Arial, sans-serif; font-size: 0.78rem;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      padding: 13px 28px; border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
       pointer-events: none; white-space: nowrap; z-index: 100;
     }
 
     /* ── Bottom controls (hidden until model placed) ──── */
     #controls {
-      position: fixed; bottom: 24px; left: 50%;
+      position: fixed; bottom: 32px; left: 50%;
       transform: translateX(-50%);
       display: none; flex-direction: column;
-      align-items: center; gap: 12px; z-index: 250;
+      align-items: stretch; gap: 14px; z-index: 250;
+      width: calc(100% - 40px); max-width: 400px;
     }
     #controls.visible { display: flex; }
 
     /* ── Mode toggle pill ─────────────────────────────── */
     #mode-toggle {
-      display: flex;
-      background: rgba(0,0,0,0.55);
-      border: 1px solid rgba(255,255,255,0.22);
-      border-radius: 999px; padding: 3px;
-      backdrop-filter: blur(10px);
-      -webkit-backdrop-filter: blur(10px);
+      display: flex; width: 100%;
+      background: rgba(10,8,5,0.78);
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 999px; padding: 4px;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
     }
     .mode-btn {
-      padding: 9px 20px; border: none; border-radius: 999px;
-      font-family: Arial, sans-serif; font-size: 0.84rem; font-weight: 600;
+      flex: 1; padding: 13px 10px; border: none; border-radius: 999px;
+      font-family: Arial, sans-serif; font-size: 0.88rem; font-weight: 700;
+      letter-spacing: 0.3px;
       cursor: pointer; white-space: nowrap;
-      background: transparent; color: rgba(255,255,255,0.55);
-      transition: background 0.2s, color 0.2s;
+      background: transparent; color: rgba(255,255,255,0.38);
+      transition: background 0.22s, color 0.22s;
       -webkit-tap-highlight-color: transparent; touch-action: manipulation;
     }
-    .mode-btn.active { background: white; color: #000; }
+    .mode-btn.active {
+      background: #c9a84c; color: #1c1000;
+      box-shadow: 0 2px 10px rgba(201,168,76,0.35);
+    }
 
     /* ── Enquire button ───────────────────────────────── */
     #enquire-btn {
-      background: white; color: #000;
-      font-family: Arial, sans-serif; font-size: 0.95rem;
-      font-weight: bold; letter-spacing: 1px;
-      padding: 14px 40px; border: none; border-radius: 32px;
-      cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      width: 100%;
+      background: #fff; color: #0a0805;
+      font-family: Arial, sans-serif; font-size: 0.92rem;
+      font-weight: 800; letter-spacing: 2px; text-transform: uppercase;
+      padding: 18px 40px; border: none; border-radius: 16px;
+      cursor: pointer;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.55);
       -webkit-tap-highlight-color: transparent; touch-action: manipulation;
     }
 
@@ -118,14 +129,15 @@
     }
     #web-panel.visible { opacity: 1; pointer-events: auto; }
 
-    /* Slim brand strip */
+    /* Brand strip */
     #web-header {
       display: flex; align-items: center;
-      padding: 0 14px; height: 36px; flex-shrink: 0;
+      padding: 0 18px; height: 46px; flex-shrink: 0;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
     }
     #web-brand-name {
-      font-family: Arial, sans-serif; font-size: 0.78rem;
-      font-weight: 700; color: white; letter-spacing: 1.5px; text-transform: uppercase;
+      font-family: Arial, sans-serif; font-size: 0.82rem;
+      font-weight: 800; color: #c9a84c; letter-spacing: 2.5px; text-transform: uppercase;
     }
 
     /* ── Website content ─────────────────────────────── */
@@ -180,10 +192,10 @@
     #brochure-status.hidden { display: none; }
     #brochure-status .ws-title { color: #ddd; }
 
-    /* Scrollable page area — leaves 52 px at the bottom for the nav bar */
+    /* Scrollable page area — leaves 64 px at the bottom for the nav bar */
     #brochure-page-wrap {
       position: absolute;
-      top: 0; left: 0; right: 0; bottom: 52px;
+      top: 0; left: 0; right: 0; bottom: 64px;
       overflow-y: auto;
       display: flex; align-items: flex-start; justify-content: center;
       -webkit-overflow-scrolling: touch;
@@ -196,25 +208,29 @@
     /* Nav bar pinned to the bottom of the panel */
     #brochure-nav {
       position: absolute;
-      bottom: 0; left: 0; right: 0; height: 52px;
-      display: flex; align-items: center; justify-content: center;
-      gap: 20px; padding: 0 16px;
-      background: #111; border-top: 1px solid rgba(255,255,255,0.08);
+      bottom: 0; left: 0; right: 0; height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px;
+      background: #0e0e0e; border-top: 1px solid rgba(255,255,255,0.07);
     }
     .brochure-nav-btn {
-      background: rgba(255,255,255,0.1); border: none;
-      color: white; font-size: 1.4rem; line-height: 1;
-      width: 40px; height: 40px; border-radius: 50%;
+      background: rgba(201,168,76,0.12);
+      border: 1px solid rgba(201,168,76,0.28);
+      color: #c9a84c; font-size: 1.5rem; line-height: 1;
+      width: 48px; height: 48px; border-radius: 14px;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
       -webkit-tap-highlight-color: transparent; touch-action: manipulation;
-      transition: background 0.15s;
+      transition: background 0.15s, border-color 0.15s;
     }
-    .brochure-nav-btn:active  { background: rgba(255,255,255,0.22); }
-    .brochure-nav-btn:disabled { opacity: 0.3; pointer-events: none; }
+    .brochure-nav-btn:active  {
+      background: rgba(201,168,76,0.28);
+      border-color: rgba(201,168,76,0.6);
+    }
+    .brochure-nav-btn:disabled { opacity: 0.22; pointer-events: none; }
 
     #brochure-page-label {
-      font-family: Arial, sans-serif; font-size: 0.82rem;
-      color: rgba(255,255,255,0.6); min-width: 60px; text-align: center;
+      font-family: Arial, sans-serif; font-size: 0.84rem; letter-spacing: 1px;
+      color: rgba(255,255,255,0.45); min-width: 72px; text-align: center;
     }
 
     /* ── Enquiry bottom sheet ─────────────────────────── */
@@ -255,9 +271,11 @@
     .field.error .error-msg { display: block; }
 
     #submit-btn {
-      width: 100%; margin-top: 8px; padding: 15px; background: white; color: #000;
-      font-family: Arial, sans-serif; font-size: 0.95rem; font-weight: bold;
-      border: none; border-radius: 12px; cursor: pointer; letter-spacing: 0.5px;
+      width: 100%; margin-top: 8px; padding: 17px; background: #c9a84c; color: #1c1000;
+      font-family: Arial, sans-serif; font-size: 0.9rem; font-weight: 800;
+      letter-spacing: 2px; text-transform: uppercase;
+      border: none; border-radius: 14px; cursor: pointer;
+      box-shadow: 0 4px 20px rgba(201,168,76,0.3);
     }
 
     #thank-you {
