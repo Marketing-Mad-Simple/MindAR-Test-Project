@@ -192,13 +192,17 @@
     #brochure-status.hidden { display: none; }
     #brochure-status .ws-title { color: #ddd; }
 
-    /* Page area — overflow hidden; pan/zoom is handled entirely via JS transform */
+    /* Page area — overflow hidden; pan/zoom is handled entirely via JS transform.
+       transform:translateZ(0) forces a compositing layer on Safari so that
+       overflow:hidden correctly clips transformed children. */
     #brochure-page-wrap {
       position: absolute;
       top: 0; left: 0; right: 0; bottom: 64px;
       overflow: hidden;
       display: flex; align-items: center; justify-content: center;
       touch-action: none;
+      transform: translateZ(0);
+      -webkit-transform: translateZ(0);
     }
     /* Width/height set by JS per render; transform driven by pan/zoom handlers */
     #brochure-canvas {
@@ -786,12 +790,29 @@
     // Single finger  → drag / pan
     // Two fingers    → pinch to zoom (zoom origin = pinch midpoint)
     // Double-tap     → reset to default position & scale
+    const brocWrap = document.getElementById('brochure-page-wrap');
     const pz = { scale: 1, tx: 0, ty: 0 };
     let _pzPrev   = null; // last single-touch { x, y }
     let _pzPinch  = null; // pinch start state
     let _pzDtap   = 0;    // timestamp of last tap (double-tap detection)
 
+    function _pzClamp() {
+      // Canvas CSS dimensions at current zoom
+      const cw = parseFloat(brochureCanvas.style.width)  || brochureCanvas.clientWidth;
+      const ch = parseFloat(brochureCanvas.style.height) || brochureCanvas.clientHeight;
+      const ww = brocWrap.clientWidth;
+      const wh = brocWrap.clientHeight;
+      const sw = cw * pz.scale;
+      const sh = ch * pz.scale;
+      // Allow panning only as far as keeps the canvas edge flush with the wrap edge.
+      // If the scaled canvas is smaller than the wrap, keep it centred (tx/ty = 0).
+      const maxX = sw > ww ? (sw - ww) / 2 : 0;
+      const maxY = sh > wh ? (sh - wh) / 2 : 0;
+      pz.tx = Math.max(-maxX, Math.min(maxX, pz.tx));
+      pz.ty = Math.max(-maxY, Math.min(maxY, pz.ty));
+    }
     function _pzApply() {
+      _pzClamp();
       brochureCanvas.style.transform =
         `translate(${pz.tx}px,${pz.ty}px) scale(${pz.scale})`;
     }
@@ -802,8 +823,6 @@
       const dx = t0.clientX - t1.clientX, dy = t0.clientY - t1.clientY;
       return Math.sqrt(dx * dx + dy * dy);
     }
-
-    const brocWrap = document.getElementById('brochure-page-wrap');
 
     brocWrap.addEventListener('touchstart', e => {
       e.stopPropagation();
