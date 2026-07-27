@@ -488,7 +488,7 @@
         '<div class="ws-title" style="color:#ddd">Loading brochure…</div>';
 
       try {
-        const pdfjsLib = window['pdfjs-dist/build/pdf'];
+        const pdfjsLib = window.pdfjsLib;
         pdfjsLib.GlobalWorkerOptions.workerSrc =
           'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 
@@ -629,7 +629,7 @@
         // Swap inner content areas
         const isWeb = newMode === 'web';
         webContent.style.display      = isWeb ? '' : 'none';
-        brochureContent.style.display = isWeb ? 'none' : '';
+        brochureContent.style.display = isWeb ? 'none' : 'flex';
 
         // Position before making visible to avoid jump
         updateBillboardPanel();
